@@ -1,5 +1,11 @@
 .azure/
 
+# Local settings and secrets
+local.settings.json
+.env
+.env.local
+.env.*.local
+
 # Logs
 logs
 *.log

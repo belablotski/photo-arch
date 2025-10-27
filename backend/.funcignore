@@ -1,0 +1,11 @@
+*.js.map
+*.ts
+.git*
+.vscode
+local.settings.json
+test
+tsconfig.json
+.editorconfig
+.eslintrc.js
+node_modules
+.DS_Store
