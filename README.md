@@ -2,6 +2,8 @@
 
 An open-source, cloud-native photo archiving solution built on Azure, providing cost-effective long-term storage with intelligent image processing and search capabilities.
 
+**Note:** This is under development and not ready for use! But you're welcome to fork it or to contribute.
+
 ## 📋 Table of Contents
 
 - [Overview](#overview)
@@ -53,7 +55,7 @@ The system consists of three main components:
 └────────┬────────┘
          │ 2. Generate SAS
          ▼
-┌──────────────────┐      3. Upload      ┌──────────────────┐
+┌──────────────────┐      3. Upload       ┌──────────────────┐
 │  Landing Zone    │ ◄─────────────────── │     Browser      │
 │  (Blob Storage)  │                      └──────────────────┘
 └────────┬─────────┘

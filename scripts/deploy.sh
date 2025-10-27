@@ -6,7 +6,7 @@ set -e
 
 ENVIRONMENT=${1:-dev}
 RESOURCE_GROUP="photo-archive-${ENVIRONMENT}-rg"
-LOCATION="eastus"
+LOCATION="westus2"
 DEPLOYMENT_NAME="photo-archive-$(date +%Y%m%d-%H%M%S)"
 
 echo "=========================================="

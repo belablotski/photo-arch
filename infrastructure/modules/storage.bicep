@@ -115,24 +115,9 @@ resource managementPolicy 'Microsoft.Storage/storageAccounts/managementPolicies@
             }
           }
         }
-        {
-          enabled: true
-          name: 'cleanup-landing-zone'
-          type: 'Lifecycle'
-          definition: {
-            actions: {
-              baseBlob: {
-                delete: {
-                  daysAfterModificationGreaterThan: 1
-                }
-              }
-            }
-            filters: {
-              blobTypes: ['blockBlob']
-              prefixMatch: ['landing-zone/']
-            }
-          }
-        }
+        // NOTE: Landing zone cleanup is handled by Azure Function after successful processing
+        // This prevents data loss if function fails before copying to photos container
+        // The deleteRetentionPolicy (7 days) provides emergency recovery if needed
       ]
     }
   }
