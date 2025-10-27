@@ -1,0 +1,25 @@
+{
+  "name": "photo-archive",
+  "version": "0.1.0",
+  "description": "Open-source photo archiving solution on Azure",
+  "scripts": {
+    "deploy:dev": "./scripts/deploy.sh dev",
+    "deploy:staging": "./scripts/deploy.sh staging",
+    "deploy:prod": "./scripts/deploy.sh prod",
+    "setup:local": "./scripts/setup-local.sh dev",
+    "teardown:dev": "./scripts/teardown.sh dev"
+  },
+  "keywords": [
+    "azure",
+    "photos",
+    "archive",
+    "serverless",
+    "blob-storage"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/belablotski/photo-arch.git"
+  }
+}
