@@ -1,0 +1,13 @@
+{
+  "bindings": [
+    {
+      "name": "blob",
+      "type": "blobTrigger",
+      "direction": "in",
+      "path": "landing-zone/{name}",
+      "connection": "StorageConnectionString"
+    }
+  ],
+  "scriptFile": "../dist/process-image/index.js",
+  "entryPoint": "processImage"
+}

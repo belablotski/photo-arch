@@ -18,10 +18,17 @@ This document outlines the development roadmap for the Photo Archive application
 ✅ **Phase 2: Backend Core - Priority 1** (COMPLETED)
 - Azure Functions project structure created
 - TypeScript configuration
-- Dependencies installed (@azure/functions, @azure/storage-blob)
+- Dependencies installed (@azure/functions, @azure/storage-blob, sharp)
 - SAS Token Generation function implemented and tested locally
 - Local development environment configured
 - Security: connection strings properly gitignored
+
+✅ **Phase 2: Backend Core - Priority 2** (COMPLETED)
+- Image Processing function implemented and tested
+- Blob trigger on landing-zone uploads
+- Thumbnail generation with Sharp library
+- Automatic cleanup and metadata storage
+- Tested with multiple images successfully
 
 **Deployment outputs:**
 - Storage Account: `photoarchdev<unique-hash>st`
@@ -59,51 +66,90 @@ backend/
 - ✅ Returns uploadUrl, blobName, containerName, expiresAt
 - ✅ Local testing with curl
 - ✅ Documentation and test scripts
+- ✅ Code committed and pushed to GitHub
+
+**Technical Implementation Details:**
+- **Programming Model:** Azure Functions v3 (function.json approach)
+  - Parameter order: `context, request` (not `request, context`)
+  - Logging: Only `context.log()` available (no `context.error()` in v3)
+- **Dependencies:** @azure/functions 4.5.0, @azure/storage-blob 12.17.0
+- **Security:** Connection strings in `local.settings.json` (gitignored)
 
 **Next:** Deploy to Azure (optional, can do after Priority 2)
 
 ---
 
-### 🔥 **PRIORITY 2: Image Processing Function**
+### 🔥 **PRIORITY 2: Image Processing Function** ✅ COMPLETED
 
-**Why Critical:**
-- Completes the upload workflow
-- Moves photos from temporary to permanent storage
-- Prevents data accumulation in landing-zone
-- Generates thumbnails for browsing
+**Status:** ✅ Implemented and tested successfully
 
 **Implementation:**
 ```
-backend/functions/process-image/
-├── index.ts          # Blob trigger handler
-├── function.json     # Blob trigger configuration
-├── thumbnail.ts      # Image resizing logic
+backend/process-image/
+├── index.ts          # Blob trigger handler ✅
+├── function.json     # Blob trigger configuration ✅
+└── README.md         # Function documentation ✅
+backend/TESTING_PROCESS_IMAGE.md  # Testing guide ✅
+backend/test-process-image.sh     # Test upload script ✅
+```
+
+**Completed:**
+- ✅ Blob-triggered on landing-zone uploads
+- ✅ Generate thumbnail (300px width, maintain aspect ratio)
+- ✅ Copy original to `photos/` container with metadata
+- ✅ Copy thumbnail to `thumbnails/` container
+- ✅ Add metadata (size, dimensions, upload date, format)
+- ✅ Delete from landing-zone ONLY after success
+- ✅ Error handling: leaves in landing-zone for retry
+- ✅ Uses Sharp library for fast image processing
+- ✅ **Tested locally with multiple images**
+- ✅ **Verified container cleanup and thumbnail generation**
+
+**Dependencies:**
+- `@azure/storage-blob` SDK ✅
+- `sharp` ^0.33.5 (image processing library) ✅
+
+**Technical Implementation Details:**
+- **Trigger Type:** Blob trigger on `landing-zone/{name}`
+- **Image Processing:** Sharp library (native C++, fast)
+- **Thumbnail:** 300px width (configurable), maintains aspect ratio
+- **Output:** Optimized JPEG, 85% quality, progressive
+- **Metadata:** Width, height, format, size, upload date
+- **Error Strategy:** Leave blob in landing-zone for automatic retry
+- **v3 Model Note:** Uses `bindingData.blobTrigger` to get blob path
+- **Compression:** Achieves ~99.5% size reduction (2.8MB → 13KB thumbnails)
+
+**Test Results:**
+```
+Landing Zone: ✅ Empty (properly cleaned up)
+Photos:       ✅ 3 images at full size (1.7-2.8MB each)
+Thumbnails:   ✅ 3 thumbnails at ~13KB each
+Processing:   ✅ Automatic trigger, metadata preserved
+```
+
+**Known Issues / Future Enhancements:**
+- ⚠️ **Filename Collision Handling:** Currently preserves original filenames, which can cause overwrites
+  - See Priority 3.5 below for collision prevention strategy
+
+**Next:** Commit changes, then implement Priority 3 (Photo Retrieval API)
+
+---
+
+### 🔥 **PRIORITY 3: Photo Retrieval API**
+
+**Why Critical:**
+- Enables photo gallery display
+- Required for frontend browsing
+- Completes read workflow
+
+**Implementation:**
+```
+backend/get-photos/
+├── index.ts          # HTTP trigger handler
+├── function.json     # Function configuration
 └── README.md         # Function documentation
 ```
 
-**Functionality:**
-1. Blob-triggered on landing-zone uploads
-2. Generate thumbnail (300px width, maintain aspect ratio)
-3. Copy original to `photos/` container
-4. Copy thumbnail to `thumbnails/` container
-5. Add metadata tags (size, dimensions, upload date)
-6. **Delete from landing-zone ONLY after success**
-7. Error handling: leave in landing-zone for retry
-
-**Dependencies:**
-- `@azure/storage-blob` SDK
-- `sharp` (image processing library)
-
-**Acceptance Criteria:**
-- ✅ Triggers automatically on upload
-- ✅ Generates thumbnail correctly
-- ✅ Copies to permanent storage
-- ✅ Cleans up landing-zone after success
-- ✅ Retries on failure (file stays in landing-zone)
-
-**Estimated Time:** 4-6 hours
-
----
 
 ### 🔥 **PRIORITY 3: Photo Retrieval API**
 
@@ -179,6 +225,157 @@ backend/functions/get-photos/
 
 ## Phase 3: Enhanced Features (Post-MVP)
 
+### Filename Collision Prevention (Priority 3.5)
+**Why Important:**
+- Current implementation preserves original filenames
+- Multiple photos with same name will overwrite each other
+- Need unique identifiers while preserving original name for display
+
+**Proposed Solutions:**
+
+**Option 1: UUID-based naming (Simplest for MVP)**
+```typescript
+// Generate unique name, store original in metadata
+const uniqueId = crypto.randomUUID();
+const extension = path.extname(originalName);
+const storedName = `${uniqueId}${extension}`;
+// Store originalName in blob metadata
+```
+- ✅ Simple, guaranteed unique
+- ✅ Fast lookups by ID
+- ❌ Loses human-readable names in storage
+
+**Option 2: Content-based hashing (Best for deduplication)**
+```typescript
+// Hash file content + store original name
+const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+const storedName = `${hash}_${originalName}`;
+```
+- ✅ Automatic deduplication of identical photos
+- ✅ Preserves some context in filename
+- ❌ Slightly slower (need to hash full content)
+
+**Option 3: Date-based folders + UUID**
+```typescript
+// Organize by upload date
+const date = new Date().toISOString().split('T')[0]; // "2025-10-31"
+const storedPath = `${date}/${crypto.randomUUID()}${extension}`;
+```
+- ✅ Natural organization by date
+- ✅ Easy to browse by time period
+- ❌ More complex path structure
+
+**Recommendation for MVP:** Option 1 (UUID)
+- Implement in `generate-sas-token` or `process-image` function
+- Store `originalFilename` in blob metadata
+- Use UUID for storage, display original name in UI
+
+**Implementation Location:**
+- Frontend generates UUID before upload, OR
+- `generate-sas-token` generates UUID for SAS URL, OR  
+- `process-image` renames during processing (current approach)
+
+**Estimated Time:** 1-2 hours
+
+---
+
+### Upload Status Tracking (Priority 3.6)
+**Why Important:**
+- Users need confirmation that uploads completed successfully
+- Show processing status: pending → processing → complete → failed
+- Enable "Your Recent Uploads" view in UI
+- Track failed uploads for retry
+
+**Current State:**
+- ✅ Application Insights logs all function executions (free tier)
+- ✅ Blob metadata stores upload date and metadata
+- ❌ No real-time status tracking for users
+- ❌ No dedicated upload history view
+
+**Proposed Solutions:**
+
+**Option 1: Application Insights Queries (Simplest)**
+- Query App Insights for successful process-image executions
+- Show recent uploads in UI by querying logs
+- ✅ Already available, no new resources
+- ❌ Slight delay (1-2 min), not real-time
+- ❌ More complex queries
+
+**Option 2: Azure Table Storage (Recommended)**
+```typescript
+// Add output binding to process-image function
+{
+  partitionKey: userId,      // Group by user
+  rowKey: blobName,          // Unique photo ID
+  status: 'complete',        // pending/processing/complete/failed
+  uploadDate: timestamp,
+  originalName: filename,
+  thumbnailUrl: url,
+  error: errorMessage        // If failed
+}
+```
+- ✅ Fast queries by user
+- ✅ Real-time status updates
+- ✅ Easy to build "Recent Uploads" UI
+- ✅ Very cheap (pennies per month)
+- ❌ Requires new resource + code changes
+
+**Option 3: Cosmos DB (Overkill for MVP)**
+- Full NoSQL database with rich querying
+- ❌ More expensive, unnecessary for MVP
+
+**Recommendation for MVP:** 
+- Start with **blob metadata** (already implemented)
+- Photo Retrieval API (Priority 3) reads metadata to show uploads
+- Add **Table Storage tracking** in Priority 4-5 for status tracking
+
+**Implementation Tasks:**
+1. Create Azure Table Storage table (or reuse storage account)
+2. Add output binding to `process-image` function
+3. Write status record on success/failure
+4. Add API endpoint to query user's upload status
+5. Frontend polls or uses SignalR for updates
+
+**Estimated Time:** 2-3 hours
+
+---
+
+### EXIF Metadata Extraction (Priority 3.7)
+**Why Important:**
+- Sort photos by actual date taken (not upload date)
+- Enable map view with GPS coordinates
+- Rich search/filter by camera, location, date
+- Preserve photographer's original metadata
+
+**Implementation:**
+- Add `exifr` library to extract EXIF data
+- Extract key fields: DateTimeOriginal, Make, Model, GPS, Orientation
+- Store in blob metadata for fast queries
+- Handle missing EXIF gracefully (screenshots, web images)
+
+**Key EXIF Fields:**
+```typescript
+{
+  dateTaken: string;        // EXIF DateTimeOriginal
+  camera: string;           // EXIF Make + Model  
+  gpsLatitude: string;      // EXIF GPS
+  gpsLongitude: string;     // EXIF GPS
+  orientation: string;      // EXIF Orientation
+  focalLength: string;      // Optional: lens info
+  aperture: string;         // Optional: f-stop
+  iso: string;              // Optional: ISO value
+}
+```
+
+**Limitations:**
+- Azure Blob metadata: 8KB max, ASCII only
+- Need to be selective about fields
+- Some images won't have EXIF
+
+**Estimated Time:** 2-3 hours
+
+---
+
 ### AI Tagging Integration
 - Azure Cognitive Services Computer Vision API
 - Add tags during image processing
@@ -207,9 +404,15 @@ backend/functions/get-photos/
 - Strong ecosystem for image processing
 - Easy debugging and testing
 
+**Implementation Choice:**
+- Using Azure Functions v3 programming model (function.json)
+- @azure/functions v4.5.0 package (supports both v3 and v4 models)
+- Context-first parameter order: `(context, request)`
+
 **Alternatives Considered:**
 - JavaScript (simpler but less type-safe)
 - Python (good but Node.js has better Azure Functions tooling)
+- Azure Functions v4 programming model (decided to use v3 for simplicity)
 
 ### Frontend: React ⚡
 **Rationale:**
@@ -229,14 +432,20 @@ backend/functions/get-photos/
 ## Development Workflow
 
 ### Local Development
-1. Run Azure Functions locally: `npm run start:functions`
-2. Run frontend dev server: `npm run start:web`
-3. Test against dev storage account
+1. Start Azure Functions: `cd backend && func start`
+2. Test with curl or test scripts: `./test-function.sh`
+3. Check function logs in terminal
+4. Build TypeScript: `npm run build` (auto-runs before start)
+
+**Local Environment Setup:**
+- Copy `local.settings.json.template` → `local.settings.json`
+- Fill in your Azure Storage connection string
+- File is gitignored for security
 
 ### Testing Strategy
-1. **Unit Tests**: Each function in isolation
-2. **Integration Tests**: End-to-end upload workflow
-3. **Manual Testing**: Upload real photos, verify processing
+1. **Unit Tests**: Each function in isolation (TODO)
+2. **Integration Tests**: End-to-end upload workflow (TODO)
+3. **Manual Testing**: Curl commands and test scripts ✅
 
 ### Deployment
 1. **Dev**: Auto-deploy on push to `main` (CI/CD setup later)
@@ -293,14 +502,15 @@ MVP COMPLETE ✨
 **Immediate (This Week):**
 1. ✅ Create Azure Functions project structure
 2. ✅ Implement SAS Token Generation function
-3. ✅ Test locally with Postman
-4. ✅ Deploy to Azure
+3. ✅ Test locally with curl
+4. ✅ Implement Image Processing function
+5. ✅ Test end-to-end upload workflow
 
 **Short Term (Next Week):**
-1. Implement Image Processing function
-2. Test end-to-end upload workflow
-3. Implement Photo Retrieval API
-4. Basic frontend upload UI
+1. Implement Photo Retrieval API ← **YOU ARE HERE**
+2. Test gallery listing functionality
+3. Basic frontend upload UI
+4. Deploy backend to Azure (optional)
 
 **Medium Term (Next 2-3 Weeks):**
 1. Complete photo gallery UI
@@ -326,6 +536,7 @@ MVP COMPLETE ✨
 
 ---
 
-**Last Updated:** October 27, 2025  
-**Status:** Phase 2 (Priority 1) Complete, Starting Priority 2  
-**Next Milestone:** Image Processing Function
+**Last Updated:** November 1, 2025  
+**Status:** Phase 2 (Priority 1 & 2) Complete ✅  
+**Next Milestone:** Photo Retrieval API (Priority 3)  
+**Git Status:** Ready to commit Priority 2 changes

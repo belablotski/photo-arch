@@ -1,13 +1,14 @@
 {
   "IsEncrypted": false,
   "Values": {
-    "AzureWebJobsStorage": "",
+    "AzureWebJobsStorage": "<your-storage-connection-string-here>",
     "FUNCTIONS_WORKER_RUNTIME": "node",
     "StorageConnectionString": "<your-storage-connection-string-here>",
     "STORAGE_ACCOUNT_NAME": "<your-storage-account-name>",
     "LANDING_ZONE_CONTAINER": "landing-zone",
     "PHOTOS_CONTAINER": "photos",
     "THUMBNAILS_CONTAINER": "thumbnails",
-    "SAS_TOKEN_EXPIRY_MINUTES": "5"
+    "SAS_TOKEN_EXPIRY_MINUTES": "5",
+    "THUMBNAIL_WIDTH": "300"
   }
 }

@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@azure/functions": "^4.5.0",
-    "@azure/storage-blob": "^12.17.0"
+    "@azure/storage-blob": "^12.17.0",
+    "sharp": "^0.34.4"
   },
   "devDependencies": {
     "@types/node": "^20.x",
