@@ -279,7 +279,130 @@ const storedPath = `${date}/${crypto.randomUUID()}${extension}`;
 
 ---
 
-### Upload Status Tracking (Priority 3.6)
+### RAW+JPEG Pair Association (Priority 3.6)
+**Why Important:**
+- Professional photographers shoot RAW+JPEG simultaneously
+- Need to keep pairs associated as one logical photo
+- Display JPEG thumbnail, preserve RAW for editing
+- Common pairs: `.CR3`+`.JPG` (Canon), `.NEF`+`.JPG` (Nikon), `.ARW`+`.JPG` (Sony)
+
+**Problem:**
+- `_MG_1234.CR3` and `_MG_1234.JPG` are the same photo
+- Need to link them together in metadata
+- Display as one photo in gallery (not two)
+- Allow downloading either version
+
+**Proposed Solution:**
+
+**1. Detection Strategy:**
+```typescript
+// Extract base filename without extension
+const getBaseName = (filename: string) => {
+  const lastDot = filename.lastIndexOf('.');
+  return filename.substring(0, lastDot);
+};
+
+// Example: "_MG_1234.CR3" → "_MG_1234"
+//          "_MG_1234.JPG" → "_MG_1234"
+```
+
+**2. Sidecar JSON Structure:**
+```typescript
+{
+  "id": "uuid-12345",
+  "originalFilename": "_MG_1234",  // Base name without extension
+  "uploadDate": "2025-11-01T05:00:00Z",
+  
+  // Multiple file variants
+  "files": {
+    "jpeg": {
+      "filename": "_MG_1234.JPG",
+      "blobPath": "photos/uuid-12345.jpg",
+      "size": 2808136,
+      "format": "jpeg"
+    },
+    "raw": {
+      "filename": "_MG_1234.CR3",
+      "blobPath": "photos/uuid-12345.cr3",
+      "size": 28081360,
+      "format": "cr3"
+    }
+  },
+  
+  // Use JPEG for display, preserve RAW
+  "primary": "jpeg",  // Which version to display
+  "hasRaw": true,     // Quick flag for filtering
+  
+  "exif": { /* extracted from RAW or JPEG */ },
+  // ... rest of metadata
+}
+```
+
+**3. Blob Tag for Filtering:**
+```typescript
+await blobClient.setTags({
+  "author": "john.doe",
+  "yearMonth": "2025-10",
+  "hasRaw": "true",    // ← New tag for RAW pairs
+  "camera": "Canon-5D",
+  // ... other tags
+});
+```
+
+**4. Implementation Approach:**
+
+**Option A: Link during upload (Recommended)**
+- User uploads both files together
+- Process-image function detects matching base names
+- Creates single JSON metadata with both file references
+- Gallery shows one photo with "RAW available" badge
+
+**Option B: Link after upload**
+- User uploads files separately
+- System detects matching base names in metadata
+- Merges metadata entries when second file arrives
+- More complex but handles async uploads
+
+**5. Gallery Display:**
+```typescript
+// Frontend shows one photo card:
+{
+  thumbnail: "thumbnails/uuid-12345.jpg",  // From JPEG
+  badge: "RAW+JPEG",                       // Indicator
+  downloadOptions: [
+    { label: "Download JPEG", url: "photos/uuid-12345.jpg" },
+    { label: "Download RAW", url: "photos/uuid-12345.cr3" }
+  ]
+}
+```
+
+**Benefits:**
+- ✅ Professional photographer workflow support
+- ✅ No duplicate entries in gallery
+- ✅ Preserve RAW for future editing
+- ✅ Use optimized JPEG for thumbnails/display
+- ✅ Clear indication of RAW availability
+- ✅ User can download either format
+
+**Implementation Tasks:**
+1. Detect file pairs by base filename
+2. Update JSON schema to support multiple file variants
+3. Store both files with linked metadata
+4. Add `hasRaw` blob tag for filtering
+5. Update gallery API to return pair information
+6. Frontend shows "RAW available" indicator
+7. Download menu offers both formats
+
+**Edge Cases to Handle:**
+- Upload JPEG first, RAW later (or vice versa)
+- Same base name, different cameras (rare but possible)
+- Orphaned files (RAW without JPEG or vice versa)
+
+**Estimated Time:** 4-5 hours
+
+---
+
+### Upload Status Tracking (Priority 3.7)
 **Why Important:**
 - Users need confirmation that uploads completed successfully
 - Show processing status: pending → processing → complete → failed
@@ -340,7 +463,7 @@ const storedPath = `${date}/${crypto.randomUUID()}${extension}`;
 
 ---
 
-### EXIF Metadata Extraction (Priority 3.7)
+### EXIF Metadata Extraction (Priority 3.8)
 **Why Important:**
 - Sort photos by actual date taken (not upload date)
 - Enable map view with GPS coordinates
@@ -373,6 +496,284 @@ const storedPath = `${date}/${crypto.randomUUID()}${extension}`;
 - Some images won't have EXIF
 
 **Estimated Time:** 2-3 hours
+
+---
+
+### Sidecar JSON Metadata Files (Priority 3.9)
+**Why Important:**
+- Overcome Azure Blob metadata 8KB limit
+- Store unlimited EXIF data, AI tags, user annotations
+- Easy to query without reading blob metadata
+- Can be updated independently of the image
+- Standard pattern in photo management (like `.xmp` files)
+
+**Implementation Strategy:**
+Create a new container `photo-metadata` with JSON files alongside photos:
+```
+photos/photo-123.jpg → photo-metadata/photo-123.json
+```
+
+**JSON Structure:**
+```typescript
+{
+  "id": "photo-123.jpg",
+  "originalFilename": "IMG_1234.jpg",
+  "uploadDate": "2025-11-01T05:00:00Z",
+  "processedDate": "2025-11-01T05:00:05Z",
+  "size": 2808136,
+  "dimensions": { "width": 4032, "height": 3024 },
+  "format": "jpeg",
+  
+  // EXIF data (unlimited fields)
+  "exif": {
+    "dateTaken": "2025-10-18T23:06:34Z",
+    "camera": { "make": "Google", "model": "Pixel 8 Pro" },
+    "lens": "4.38mm f/1.8",
+    "settings": { "iso": 100, "aperture": "f/1.8", "shutter": "1/125" },
+    "gps": { 
+      "latitude": 37.7749, 
+      "longitude": -122.4194,
+      "altitude": 10,
+      "location": "San Francisco, CA"
+    },
+    "orientation": 1
+  },
+  
+  // AI-generated metadata
+  "ai": {
+    "tags": ["sunset", "beach", "ocean", "people"],
+    "faces": { "count": 2, "ids": ["face-abc", "face-def"] },
+    "objects": ["person", "dog", "surfboard"],
+    "scene": "outdoor",
+    "colors": ["#FF6B35", "#F7931E", "#004E89"]
+  },
+  
+  // User-added metadata
+  "user": {
+    "title": "Sunset at Ocean Beach",
+    "description": "Family vacation with friends",
+    "album": "California 2025",
+    "favorite": true,
+    "rating": 5,
+    "tags": ["vacation", "family", "beach"],  // ← Unlimited custom text tags
+    "people": ["John", "Sarah"],              // ← People in photo (unlimited)
+    "notes": "Best sunset of the trip!"
+  },
+  
+  // Processing history
+  "processing": {
+    "thumbnail": { "width": 300, "size": 13071 },
+    "edits": ["cropped", "color-corrected"],
+    "versions": [
+      { "date": "2025-11-01", "type": "original" },
+      { "date": "2025-11-02", "type": "edited" }
+    ]
+  }
+}
+```
+
+**Advantages:**
+- ✅ No size limits on metadata
+- ✅ Structured, queryable JSON
+- ✅ Easy to backup/export entire photo collection
+- ✅ Can update metadata without touching the image
+- ✅ Enable rich search and filtering
+- ✅ Support photo editing history
+- ✅ **No database required - keeps architecture simple**
+
+**Azure Blob Index Tags for Fast Queries:**
+Azure Blob Storage supports up to 10 index tags per blob (key-value pairs):
+
+**Final Tag Schema (10 tags - all slots used):**
+```typescript
+// Set blob index tags for fast filtering
+await blobClient.setTags({
+  // Photo date (1 tag) - CRITICAL for sorting/filtering
+  "dateTaken": "2025-10-30",           // YYYY-MM-DD format (from EXIF or upload date)
+  
+  // Equipment metadata (2 tags)
+  "camera": "Canon-5D-Mark-IV",        // Camera make+model (no spaces)
+  "lens": "50mm-f1.4",                 // Lens info (simplified, no spaces)
+  
+  // Location (2 tags)
+  "location": "San-Francisco-CA",      // City/region (simplified, no spaces)
+  "hasGPS": "true",                    // Boolean: has GPS coordinates (enables map view filter)
+  
+  // User preferences (1 tag)
+  "rating": "0",                       // 0-5 star rating (string: "0", "1", "2", "3", "4", "5")
+  
+  // Custom user tags (3 tags) - Most important user-defined tags
+  "customTag1": "vacation",            // Primary custom tag
+  "customTag2": "family",              // Secondary custom tag
+  "customTag3": "beach",               // Tertiary custom tag
+  
+  // System tags (1 tag)
+  "favorite": "false",                 // User marked as favorite
+});
+
+// Author stored in blob path prefix (not as tag):
+// photos/john.doe@example.com/uuid-12345.jpg
+// thumbnails/john.doe@example.com/uuid-12345.jpg
+
+// Query examples with operators (=, >, <, >=, <=)
+const queries = [
+  // Date range queries (YYYY-MM-DD format - lexicographic comparison works!)
+  "dateTaken >= '2025-01-01' AND dateTaken <= '2025-12-31'",  // All 2025 photos
+  "dateTaken >= '2025-10-01' AND dateTaken <= '2025-10-31'",  // October 2025
+  "dateTaken >= '2024-06-01'",                                // Photos since June 2024
+  "dateTaken = '2025-10-30'",                                 // Exact date
+  
+  // Equipment queries
+  "camera = 'Canon-5D-Mark-IV'",                        // Specific camera
+  "lens = '50mm-f1.4'",                                 // Specific lens
+  "camera = 'Canon-5D-Mark-IV' AND lens = '50mm-f1.4'", // Camera + lens combo
+  
+  // Location queries
+  "location = 'San-Francisco-CA'",                      // Photos from SF
+  "location = 'Paris-France' AND dateTaken >= '2025-01-01'", // Paris in 2025
+  "hasGPS = 'true'",                                    // All photos with GPS coordinates
+  "hasGPS = 'true' AND dateTaken >= '2025-01-01'",      // 2025 photos with GPS (for map view)
+  
+  // Rating queries
+  "rating >= '4'",                                      // 4-5 star photos
+  "rating = '5'",                                       // Only 5-star
+  "rating >= '3' AND dateTaken >= '2025-01-01'",        // 3+ stars from 2025
+  
+  // Custom tag queries (search across all 3 tag slots)
+  "customTag1 = 'vacation' OR customTag2 = 'vacation' OR customTag3 = 'vacation'",  // Has 'vacation' tag
+  "(customTag1 = 'vacation' OR customTag2 = 'vacation' OR customTag3 = 'vacation') AND rating >= '4'",  // High-rated vacation photos
+  
+  // Combined queries
+  "camera = 'Canon-5D-Mark-IV' AND rating >= '4'",      // Great photos from Canon 5D
+  "dateTaken >= '2025-10-01' AND location = 'Paris-France' AND favorite = 'true'",  // October Paris favorites
+  "hasGPS = 'true' AND rating >= '4'",                  // High-rated photos with GPS (great travel photos)
+  
+  // User preference filters
+  "favorite = 'true'",                                  // All favorites
+  "favorite = 'true' AND rating >= '4'",                // High-rated favorites
+];
+
+// For per-user queries, list blobs by prefix:
+const userPhotos = containerClient.listBlobsByHierarchy("/", {
+  prefix: "photos/john.doe@example.com/"
+});
+
+// Then apply blob tag filters on the user's photos:
+const filteredQuery = "dateTaken >= '2025-01-01' AND rating >= '4'";
+// Note: Blob tag queries search across ALL blobs, so include user in path when retrieving
+
+// Fast query across all blobs
+const results = containerClient.findBlobsByTags(tagQuery);
+```
+
+**Tag Design Rationale:**
+- ✅ `dateTaken` as `YYYY-MM-DD` enables precise date range queries (lexicographic comparison works perfectly)
+- ✅ `camera` and `lens` for equipment-based searches (essential for photographers)
+- ✅ `location` simplified (detailed GPS coordinates in JSON)
+- ✅ `hasGPS` flag for quick "mappable photos" filter (enables map view, travel photo collections)
+- ✅ `rating` as string "0"-"5" enables range queries (`rating >= '4'` for high-rated photos)
+- ✅ `customTag1`, `customTag2`, `customTag3` for user's top 3 most important tags
+- ✅ `favorite` for starred photos (quick filter)
+- ✅ **`author` moved to blob path prefix** (`photos/john.doe/uuid.jpg`) - saves a tag slot!
+- ✅ No spaces in values (use hyphens: "Canon-5D-Mark-IV" not "Canon 5D Mark IV")
+- ✅ All 10 slots used efficiently - no waste!
+
+**Author Storage Strategy:**
+- **Blob path:** `photos/{author}/{uuid}.jpg` and `thumbnails/{author}/{uuid}.jpg`
+- **Benefits:** 
+  - Natural isolation per user
+  - Easy to list all photos for a user: `listBlobsByHierarchy(prefix: "photos/john.doe/")`
+  - Freed up one blob tag slot for `hasGPS` (important for map view)
+- **For multi-user filtering:** List by prefix first, then apply blob tag queries
+
+**Tag Limitations:**
+- Max 10 tags per blob
+- Tag values are strings only (no native dates/numbers)
+- Tag keys max 128 chars, values max 256 chars
+- Queries use string comparison (but YYYY-MM format works for date ranges)
+
+**Combined Approach (Final Design):**
+1. **Blob Index Tags** (10 tags - ALL used): Fast filtering for common queries
+   - **Date:** `dateTaken` (YYYY-MM-DD for precise range queries)
+   - **Equipment:** `camera`, `lens` (essential for photographers)
+   - **Location:** `location` (city/region)
+   - **Quality:** `rating` (0-5 stars)
+   - **Custom:** `customTag1`, `customTag2`, `customTag3` (user's top 3 tags)
+   - **System:** `author`, `favorite`
+   - Enables efficient queries without scanning all JSON files
+   
+2. **Sidecar JSON** (unlimited): Full metadata storage
+   - Complete EXIF data (GPS coordinates, camera settings, orientation)
+   - AI tags (unlimited computer vision tags)
+   - User notes (unlimited custom tags beyond the top 3)
+   - Processing history
+   - Read when displaying photo details
+   
+3. **Custom Tag Strategy:**
+   - **Top 3 tags** → Blob index tags (fast search via `customTag1/2/3 = 'vacation'`)
+   - **All tags** → JSON (unlimited storage)
+   - User sees ALL tags in UI, but only top 3 are instantly searchable
+   
+4. **No Database Needed**: 
+   - List photos: Query blob index tags (instant)
+   - Show details: Read JSON file (fast)
+   - Update metadata: Update JSON + update blob tags
+
+**Custom Tag Search Strategy:**
+
+**Option 1: Client-side filtering (Simple, works for small collections)**
+```typescript
+// Get all photos via blob tag query (fast)
+const photos = await queryByBlobTags("year = '2025'");
+
+// Load JSON metadata for each photo (parallel)
+const metadata = await Promise.all(
+  photos.map(p => loadJsonMetadata(p.id))
+);
+
+// Filter by custom tags in memory
+const filtered = metadata.filter(m => 
+  m.user.tags.includes("vacation")
+);
+```
+- ✅ Simple, no extra infrastructure
+- ✅ Works well for <1000 photos
+- ❌ Slower for large collections (need to read all JSON files)
+
+**Option 2: Azure Cognitive Search (Advanced, for large collections)**
+```typescript
+// Index all JSON metadata files
+// Enable full-text search across custom tags, titles, descriptions
+// Fast queries: "Find photos tagged 'vacation' OR 'beach'"
+```
+- ✅ Lightning fast for millions of photos
+- ✅ Full-text search, autocomplete, fuzzy matching
+- ❌ Additional cost (~$75/month for basic tier)
+- ❌ More complex setup
+
+**Recommendation for MVP:** 
+- Start with **Option 1** (JSON + client-side filtering)
+- Add **Option 2** (Cognitive Search) later if collection grows large
+
+**Implementation Tasks:**
+1. Create `photo-metadata` container in storage account
+2. Update `process-image` function to write JSON file AND set blob tags
+3. Update `get-photos` API to query by tags, then read JSON for details
+4. Add API endpoint for updating metadata (JSON + tags)
+5. Add support for user-defined custom tags in JSON (unlimited)
+6. Enable tag-based filtering in frontend (client-side or server-side)
+
+**Storage Cost:**
+- JSON files: ~1-5KB each (negligible compared to images)
+- Blob index tags: Free (included with blob storage)
+- Can use Cool tier for older metadata
+
+**Query Performance:**
+- Blob tag queries: Very fast, indexed by Azure
+- JSON file reads: Only when showing photo details
+- No database to manage, backup, or pay for
+
+**Estimated Time:** 3-4 hours
 
 ---
 
