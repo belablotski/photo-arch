@@ -2,7 +2,14 @@
 
 ## Azure Functions Programming Model
 
-**CRITICAL: This project uses Azure Functions v4 Programming Model**
+**CRITICAL: This project uses a HYBRID model with @azure/functions 4.5.0**
+
+This project uses @azure/functions 4.5.0 package but with a **hybrid v3/v4 programming model**:
+- ✅ **Parameter order:** v3 style - `context` FIRST, then request/blob
+- ✅ **Logging:** v3 style - `context.log()` only
+- ✅ **Query params:** v3 style - `req.query.paramName` (plain object, not URLSearchParams)
+- ✅ **Response format:** v4 style - `jsonBody` instead of `body`
+- ✅ **Return type:** v4 style - Return `HttpResponseInit` directly
 
 ### Function Signatures
 
@@ -11,19 +18,20 @@
 import { HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 
 export async function functionName(
-  request: HttpRequest,
-  context: InvocationContext
+  context: InvocationContext,
+  request: HttpRequest
 ): Promise<HttpResponseInit> {
-  // Parameter order: request FIRST, context SECOND
-  context.info("Log message");  // Use context.info(), context.warn(), context.error()
+  // Parameter order: context FIRST, request SECOND (v3 style)
+  context.log("Log message");  // Use context.log() for all logging (v3 style)
   
-  // Parse query parameters
-  const param = request.query.get('paramName') || 'default';
+  // Parse query parameters (v3 style - plain object)
+  const query = request.query as any;
+  const param = query.paramName || 'default';
   
   // Parse body
   const body = await request.json();
   
-  // Return response
+  // Return response (v4 style - jsonBody)
   return {
     status: 200,
     headers: { "Content-Type": "application/json" },
@@ -37,15 +45,16 @@ export async function functionName(
 import { InvocationContext } from '@azure/functions';
 
 export async function functionName(
-  blob: Buffer,
-  context: InvocationContext
+  context: InvocationContext,
+  blob: Buffer
 ): Promise<void> {
-  // Parameter order: blob FIRST, context SECOND
-  context.info("Processing blob");
+  // Parameter order: context FIRST, blob SECOND (v3 style)
+  context.log("Processing blob");
   
-  // Get blob name from binding data
-  const blobName = context.triggerMetadata.name as string;
-  const blobPath = context.triggerMetadata.blobTrigger as string;
+  // Get blob name from binding data (v3 style)
+  const bindingData = (context as any).bindingData;
+  const blobName = bindingData?.name as string;
+  const blobPath = bindingData?.blobTrigger as string;
 }
 ```
 
@@ -62,10 +71,8 @@ All functions MUST include:
 
 ### Logging
 
-- ✅ `context.info()` - Information messages
-- ✅ `context.warn()` - Warning messages  
-- ✅ `context.error()` - Error messages
-- ❌ `context.log()` - DO NOT USE (v3 only)
+- ✅ `context.log()` - All logging (information, warnings, errors)
+- ❌ `context.info()`, `context.warn()`, `context.error()` - NOT available in @azure/functions 4.5.0
 
 ### Response Format
 
@@ -74,9 +81,19 @@ HTTP functions return `HttpResponseInit`:
 return {
   status: 200,
   headers: { "Content-Type": "application/json" },
-  jsonBody: { key: "value" }  // Use jsonBody, not body
+  jsonBody: { key: "value" }  // v4 style - use jsonBody, not body
 };
 ```
+
+### Query Parameters
+
+Access query parameters as plain object properties (v3 runtime behavior):
+```typescript
+const query = request.query as any;
+const param = query.paramName || 'defaultValue';
+```
+
+**Note:** Despite TypeScript types showing `URLSearchParams`, at runtime `request.query` is a plain object.
 
 ## TypeScript Configuration
 
@@ -190,7 +207,7 @@ try {
   return { status: 200, jsonBody: { success: true } };
 } catch (error) {
   const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-  context.error(`Error: ${errorMessage}`);
+  context.log(`Error: ${errorMessage}`);  // v3 style - context.log() only
   return {
     status: 500,
     headers: { "Content-Type": "application/json" },
@@ -204,21 +221,23 @@ try {
 
 ## Common Mistakes to Avoid
 
-❌ Using `context.log()` instead of `context.info()`  
-❌ Wrong parameter order (context first instead of request/blob first)  
+❌ Wrong parameter order (request/blob first) - Context must be FIRST
+❌ Using `context.info()`, `context.warn()`, `context.error()` (not available)
+❌ Using `request.query.get('param')` - Use `request.query.param` instead (plain object at runtime)
 ❌ Using `body:` instead of `jsonBody:` in HTTP responses  
 ❌ Forgetting `scriptFile` and `entryPoint` in function.json  
-❌ Using `req.query.paramName` instead of `req.query.get('paramName')`  
 ❌ Spaces in blob tag values (use hyphens: "Canon-5D-Mark-IV")  
 ❌ Numeric blob tag values (all values must be strings)
 
 ## Best Practices
 
 ✅ Use TypeScript strict mode  
+✅ Context parameter FIRST in all functions
+✅ Cast `request.query` to `any` to access properties
 ✅ Add proper JSDoc comments to functions  
 ✅ Include README.md for each function  
 ✅ Use descriptive variable names  
-✅ Log important operations with context.info()  
+✅ Log important operations with context.log()  
 ✅ Return structured error responses  
 ✅ Include test scripts for manual testing  
 ✅ Store original filename in blob metadata  
@@ -244,6 +263,7 @@ try {
 ---
 
 **Last Updated:** November 2, 2025  
-**Programming Model:** Azure Functions v4  
+**Programming Model:** Hybrid v3/v4 (v3 parameter order & logging, v4 response format)  
+**Package Version:** @azure/functions 4.5.0
 **Node.js Version:** 18+  
 **TypeScript Version:** 5.3.3

@@ -9,10 +9,10 @@ import { BlobServiceClient, generateBlobSASQueryParameters, BlobSASPermissions, 
  * Returns: { photos: Photo[], continuationToken: string, hasMore: boolean }
  */
 export async function getPhotos(
-  req: HttpRequest,
-  context: InvocationContext
+  context: InvocationContext,
+  req: HttpRequest
 ): Promise<HttpResponseInit> {
-  context.info("GET /api/photos - Photo retrieval request received");
+  context.log("GET /api/photos - Photo retrieval request received");
 
   try {
     const connectionString = process.env.StorageConnectionString;
@@ -21,25 +21,27 @@ export async function getPhotos(
     }
 
     // Parse query parameters
-    const limit = parseInt(req.query.get('limit') || "20");
-    const continuationToken = req.query.get('continuationToken') || undefined;
-    const author = req.query.get('author') || "default-user"; // TODO: Get from authentication
+    // Note: At runtime req.query is a plain object, not URLSearchParams despite TypeScript types
+    const query = req.query as any;
+    const limit = parseInt(query.limit || "20");
+    const continuationToken = query.continuationToken || undefined;
+    const author = query.author || "default-user"; // TODO: Get from authentication
 
     // Filter parameters
-    const dateTaken = req.query.get('dateTaken') || undefined;
-    const camera = req.query.get('camera') || undefined;
-    const lens = req.query.get('lens') || undefined;
-    const location = req.query.get('location') || undefined;
-    const hasGPS = req.query.get('hasGPS') || undefined;
-    const rating = req.query.get('rating') || undefined;
-    const customTag1 = req.query.get('customTag1') || undefined;
-    const customTag2 = req.query.get('customTag2') || undefined;
-    const customTag3 = req.query.get('customTag3') || undefined;
-    const favorite = req.query.get('favorite') || undefined;
+    const dateTaken = query.dateTaken || undefined;
+    const camera = query.camera || undefined;
+    const lens = query.lens || undefined;
+    const location = query.location || undefined;
+    const hasGPS = query.hasGPS || undefined;
+    const rating = query.rating || undefined;
+    const customTag1 = query.customTag1 || undefined;
+    const customTag2 = query.customTag2 || undefined;
+    const customTag3 = query.customTag3 || undefined;
+    const favorite = query.favorite || undefined;
 
-    context.info(`Retrieving photos for user: ${author}, limit: ${limit}`);
+    context.log(`Retrieving photos for user: ${author}, limit: ${limit}`);
     if (continuationToken) {
-      context.info(`Continuation token provided`);
+      context.log(`Continuation token provided`);
     }
 
     const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
@@ -59,7 +61,7 @@ export async function getPhotos(
     const page = (await iterator.next()).value;
     
     if (page) {
-      context.info(`Found ${page.segment.blobItems.length} blobs in page`);
+      context.log(`Found ${page.segment.blobItems.length} blobs in page`);
 
       for (const blob of page.segment.blobItems) {
         // Apply tag filtering if provided
@@ -112,7 +114,7 @@ export async function getPhotos(
       }
 
       nextContinuationToken = page.continuationToken;
-      context.info(`Returning ${photos.length} photos, hasMore: ${!!nextContinuationToken}`);
+      context.log(`Returning ${photos.length} photos, hasMore: ${!!nextContinuationToken}`);
     }
 
     return {
@@ -131,7 +133,7 @@ export async function getPhotos(
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    context.error(`Error retrieving photos: ${errorMessage}`);
+    context.log(`Error retrieving photos: ${errorMessage}`);
     return {
       status: 500,
       headers: { "Content-Type": "application/json" },
