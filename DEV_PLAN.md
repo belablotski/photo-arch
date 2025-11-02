@@ -69,9 +69,10 @@ backend/
 - ✅ Code committed and pushed to GitHub
 
 **Technical Implementation Details:**
-- **Programming Model:** Azure Functions v3 (function.json approach)
-  - Parameter order: `context, request` (not `request, context`)
-  - Logging: Only `context.log()` available (no `context.error()` in v3)
+- **Programming Model:** Azure Functions v4 (recommended)
+  - Parameter order: `request, context` (not `context, request`)
+  - Logging: Use `context.info()`, `context.warn()`, `context.error()`
+  - See `.github/copilot-instructions.md` for full v4 model guidelines
 - **Dependencies:** @azure/functions 4.5.0, @azure/storage-blob 12.17.0
 - **Security:** Connection strings in `local.settings.json` (gitignored)
 
@@ -116,7 +117,7 @@ backend/test-process-image.sh     # Test upload script ✅
 - **Output:** Optimized JPEG, 85% quality, progressive
 - **Metadata:** Width, height, format, size, upload date
 - **Error Strategy:** Leave blob in landing-zone for automatic retry
-- **v3 Model Note:** Uses `bindingData.blobTrigger` to get blob path
+- **v4 Model Note:** Uses `context.triggerMetadata.blobTrigger` to get blob path
 - **Compression:** Achieves ~99.5% size reduction (2.8MB → 13KB thumbnails)
 
 **Test Results:**
@@ -806,14 +807,15 @@ const filtered = metadata.filter(m =>
 - Easy debugging and testing
 
 **Implementation Choice:**
-- Using Azure Functions v3 programming model (function.json)
-- @azure/functions v4.5.0 package (supports both v3 and v4 models)
-- Context-first parameter order: `(context, request)`
+- Using Azure Functions v4 programming model (function.json + entryPoint)
+- @azure/functions v4.5.0 package
+- Parameter order: `request, context` for HTTP triggers, `blob, context` for blob triggers
+- See `.github/copilot-instructions.md` for comprehensive v4 guidelines
 
 **Alternatives Considered:**
 - JavaScript (simpler but less type-safe)
 - Python (good but Node.js has better Azure Functions tooling)
-- Azure Functions v4 programming model (decided to use v3 for simplicity)
+- Azure Functions v3 programming model (decided to use v4 for consistency and modern features)
 
 ### Frontend: React ⚡
 **Rationale:**
