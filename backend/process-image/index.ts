@@ -94,6 +94,21 @@ export async function processImage(
       },
     });
 
+    // Set default blob tags (flat structure with author in tags)
+    // TODO: Extract from EXIF when implemented
+    await photoBlobClient.setTags({
+      author: "default-user", // TODO: Get from authentication
+      dateTaken: new Date().toISOString().split('T')[0], // YYYY-MM-DD
+      camera: "",
+      lens: "",
+      location: "",
+      rating: "0",
+      customTag1: "",
+      customTag2: "",
+      customTag3: "",
+      favorite: "false"
+    });
+
     // Upload thumbnail to thumbnails container
     context.log(`Copying thumbnail to ${thumbnailsContainer}/${blobName}...`);
     const thumbnailBlobClient = thumbnailsContainerClient.getBlockBlobClient(blobName);

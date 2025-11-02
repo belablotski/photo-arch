@@ -126,11 +126,11 @@ backend/
 
 ```typescript
 await blobClient.setTags({
+  "author": "john.doe",           // Photo owner/uploader
   "dateTaken": "2025-10-30",      // YYYY-MM-DD format
   "camera": "Canon-5D-Mark-IV",   // No spaces, use hyphens
   "lens": "50mm-f1.4",
   "location": "San-Francisco-CA",
-  "hasGPS": "true",               // String "true" or "false"
   "rating": "0",                  // String "0"-"5"
   "customTag1": "vacation",
   "customTag2": "family",
@@ -139,13 +139,13 @@ await blobClient.setTags({
 });
 ```
 
-**Author stored in blob path:** `photos/{author}/{uuid}.jpg`
+**Blob path:** `photos/{uuid}.jpg` (flat structure, author in tags)
 
 ## Storage Containers
 
 - `landing-zone` - Temporary upload storage (cleaned after processing)
-- `photos` - Permanent photo archive  
-- `thumbnails` - Generated thumbnails (300px width)
+- `photos` - Permanent photo archive (flat structure with UUID names)
+- `thumbnails` - Generated thumbnails (300px width, matching UUID)
 - `$web` - Static website hosting
 
 ## Common Patterns

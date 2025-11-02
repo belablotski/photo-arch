@@ -25,21 +25,20 @@ export async function getPhotos(
     const query = req.query as any;
     const limit = parseInt(query.limit || "20");
     const continuationToken = query.continuationToken || undefined;
-    const author = query.author || "default-user"; // TODO: Get from authentication
 
     // Filter parameters
+    const author = query.author || undefined; // TODO: Get from authentication, filter by this user
     const dateTaken = query.dateTaken || undefined;
     const camera = query.camera || undefined;
     const lens = query.lens || undefined;
     const location = query.location || undefined;
-    const hasGPS = query.hasGPS || undefined;
     const rating = query.rating || undefined;
     const customTag1 = query.customTag1 || undefined;
     const customTag2 = query.customTag2 || undefined;
     const customTag3 = query.customTag3 || undefined;
     const favorite = query.favorite || undefined;
 
-    context.log(`Retrieving photos for user: ${author}, limit: ${limit}`);
+    context.log(`Retrieving photos with filters, limit: ${limit}`);
     if (continuationToken) {
       context.log(`Continuation token provided`);
     }
@@ -50,9 +49,8 @@ export async function getPhotos(
     const photos = [];
     let nextContinuationToken = null;
 
-    // List blobs with user prefix
+    // List blobs with metadata and tags
     const iterator = containerClient.listBlobsFlat({
-      prefix: `${author}/`,
       includeMetadata: true,
       includeTags: true
     }).byPage({ maxPageSize: limit, continuationToken });
@@ -66,11 +64,11 @@ export async function getPhotos(
       for (const blob of page.segment.blobItems) {
         // Apply tag filtering if provided
         if (!matchesFilters(blob.tags, {
+          author,
           dateTaken,
           camera,
           lens,
           location,
-          hasGPS,
           rating,
           customTag1,
           customTag2,
@@ -80,20 +78,20 @@ export async function getPhotos(
           continue;
         }
 
-        // Extract filename from path (remove author prefix)
-        const filename = blob.name.split('/').pop() || blob.name;
+        // Extract filename from blob name (flat structure now)
+        const filename = blob.name;
 
         // Generate SAS URLs for thumbnail and photo (1 hour expiration)
         const thumbnailUrl = await generateReadSasUrl(
           connectionString,
           "thumbnails",
-          `${author}/${filename}`,
+          filename, // Flat structure - thumbnails/{uuid}.jpg
           60 // 1 hour
         );
         const photoUrl = await generateReadSasUrl(
           connectionString,
           "photos",
-          blob.name,
+          blob.name, // Flat structure - photos/{uuid}.jpg
           60
         );
 

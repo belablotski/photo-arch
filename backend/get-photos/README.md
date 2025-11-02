@@ -13,9 +13,10 @@ GET /api/photos
 ### Basic Parameters
 - `limit` (optional): Number of photos to return per page (default: 20)
 - `continuationToken` (optional): Token for pagination
-- `author` (optional): Filter by author/user (default: "default-user")
 
 ### Filter Parameters (Blob Tags)
+- `author`: Filter by photo owner (exact match)
+  - Example: `author=john.doe`
 - `dateTaken`: Filter by date (supports operators: =, >=, <=, >, <)
   - Example: `dateTaken=2025-10-30` (exact date)
   - Example: `dateTaken>=2025-01-01` (photos since Jan 1, 2025)
@@ -26,8 +27,6 @@ GET /api/photos
   - Example: `lens=50mm-f1.4`
 - `location`: Filter by location (exact match)
   - Example: `location=San-Francisco-CA`
-- `hasGPS`: Filter by GPS availability (true/false)
-  - Example: `hasGPS=true`
 - `rating`: Filter by rating (supports operators: =, >=, <=, >, <)
   - Example: `rating>=4` (4-5 star photos)
   - Example: `rating=5` (only 5-star photos)
@@ -40,56 +39,56 @@ GET /api/photos
 
 ### Basic Usage
 
-**List all photos for a user:**
+**List all photos:**
+```bash
+curl "http://localhost:7071/api/photos"
+```
+
+**List photos by author:**
 ```bash
 curl "http://localhost:7071/api/photos?author=john.doe"
 ```
 
 **List with pagination:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&limit=10"
+curl "http://localhost:7071/api/photos?limit=10"
 ```
 
 **Next page:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&limit=10&continuationToken=abc123"
+curl "http://localhost:7071/api/photos?limit=10&continuationToken=abc123"
 ```
 
 ### Filtering Examples
 
 **Photos from 2025:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&dateTaken>=2025-01-01&dateTaken<=2025-12-31"
+curl "http://localhost:7071/api/photos?dateTaken>=2025-01-01&dateTaken<=2025-12-31"
 ```
 
 **High-rated photos (4-5 stars):**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&rating>=4"
+curl "http://localhost:7071/api/photos?rating>=4"
 ```
 
 **Photos from specific camera:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&camera=Canon-5D-Mark-IV"
-```
-
-**Photos with GPS coordinates:**
-```bash
-curl "http://localhost:7071/api/photos?author=john.doe&hasGPS=true"
+curl "http://localhost:7071/api/photos?camera=Canon-5D-Mark-IV"
 ```
 
 **Vacation photos:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&customTag1=vacation"
+curl "http://localhost:7071/api/photos?customTag1=vacation"
 ```
 
 **Favorite photos:**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&favorite=true"
+curl "http://localhost:7071/api/photos?favorite=true"
 ```
 
-**Combined filters (high-rated travel photos from 2025):**
+**Combined filters (John's high-rated travel photos from 2025):**
 ```bash
-curl "http://localhost:7071/api/photos?author=john.doe&dateTaken>=2025-01-01&hasGPS=true&rating>=4"
+curl "http://localhost:7071/api/photos?author=john.doe&dateTaken>=2025-01-01&rating>=4&location=Paris"
 ```
 
 ## Response Format
