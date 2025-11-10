@@ -2,12 +2,44 @@ import { app, InvocationContext } from '@azure/functions';
 import { BlobServiceClient } from '@azure/storage-blob';
 import { createHash } from 'crypto';
 import sharp from 'sharp';
+import exifr from 'exifr';
 
 interface ImageMetadata {
   width: number;
   height: number;
   format: string;
   size: number;
+}
+
+interface ExifData {
+  make?: string;
+  model?: string;
+  lensModel?: string;
+  lensMake?: string;
+  dateTimeOriginal?: Date;
+  iso?: number;
+  fNumber?: number;
+  exposureTime?: number;
+  focalLength?: number;
+  latitude?: number;
+  longitude?: number;
+  artist?: string;
+  copyright?: string;
+  orientation?: number;
+}
+
+interface BlobTags {
+  author: string;
+  dateTaken: string;
+  camera: string;
+  lens: string;
+  location: string;
+  rating: string;
+  customTag1: string;
+  customTag2: string;
+  customTag3: string;
+  favorite: string;
+  [key: string]: string; // Index signature for Azure SDK compatibility
 }
 
 /**
@@ -75,6 +107,15 @@ app.storageBlob('process-image', {
       // Create blob service client
       const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
 
+      // Extract EXIF data
+      context.log(`Extracting EXIF data...`);
+      const exifData = await extractExifData(blobBuffer);
+      if (exifData) {
+        context.log(`EXIF extracted: camera=${exifData.make} ${exifData.model}, lens=${exifData.lensModel}, date=${exifData.dateTimeOriginal}`);
+      } else {
+        context.log(`No EXIF data found in image`);
+      }
+
       // Get image metadata
       const imageMetadata = await getImageMetadata(blobBuffer);
       context.log(`Image metadata: ${JSON.stringify(imageMetadata)}`);
@@ -113,24 +154,21 @@ app.storageBlob('process-image', {
           uploadDate: new Date().toISOString(),
           width: imageMetadata.width.toString(),
           height: imageMetadata.height.toString(),
-          format: imageMetadata.format
+          format: imageMetadata.format,
+          // Add EXIF metadata
+          ...(exifData?.iso && { iso: exifData.iso.toString() }),
+          ...(exifData?.fNumber && { aperture: `f/${exifData.fNumber}` }),
+          ...(exifData?.exposureTime && { shutterSpeed: `1/${Math.round(1 / exifData.exposureTime)}` }),
+          ...(exifData?.focalLength && { focalLength: `${exifData.focalLength}mm` }),
+          ...(exifData?.artist && { artist: exifData.artist }),
+          ...(exifData?.copyright && { copyright: exifData.copyright })
         },
       });
 
-      // Set default blob tags (flat structure with author in tags)
-      // TODO: Extract from EXIF when implemented
-      await photoBlobClient.setTags({
-        author: "default-user", // TODO: Get from authentication
-        dateTaken: new Date().toISOString().split('T')[0], // YYYY-MM-DD
-        camera: "",
-        lens: "",
-        location: "",
-        rating: "0",
-        customTag1: "",
-        customTag2: "",
-        customTag3: "",
-        favorite: "false"
-      });
+      // Create blob tags from EXIF data
+      const blobTags: Record<string, string> = createBlobTags(exifData, "default-user"); // TODO: Get from authentication
+      context.log(`Setting blob tags: ${JSON.stringify(blobTags)}`);
+      await photoBlobClient.setTags(blobTags);
 
       // Upload thumbnail to thumbnails container with same content-hash name
       context.log(`Copying thumbnail to ${thumbnailsContainer}/${permanentBlobName}...`);
@@ -181,4 +219,127 @@ async function generateThumbnail(imageBuffer: Buffer, width: number): Promise<Bu
     })
     .jpeg({ quality: 85, progressive: true }) // Convert to optimized JPEG
     .toBuffer();
+}
+
+/**
+ * Extract EXIF data from image buffer (works with JPEG and RAW formats)
+ */
+async function extractExifData(imageBuffer: Buffer): Promise<ExifData | null> {
+  try {
+    const exif = await exifr.parse(imageBuffer, {
+      // Extract specific fields we need
+      pick: [
+        'Make', 'Model',
+        'LensModel', 'LensMake',
+        'DateTimeOriginal', 'CreateDate',
+        'ISO', 'FNumber', 'ExposureTime', 'FocalLength',
+        'latitude', 'longitude',
+        'Artist', 'Copyright',
+        'Orientation'
+      ]
+    });
+
+    if (!exif) {
+      return null;
+    }
+
+    return {
+      make: exif.Make,
+      model: exif.Model,
+      lensModel: exif.LensModel,
+      lensMake: exif.LensMake,
+      dateTimeOriginal: exif.DateTimeOriginal || exif.CreateDate,
+      iso: exif.ISO,
+      fNumber: exif.FNumber,
+      exposureTime: exif.ExposureTime,
+      focalLength: exif.FocalLength,
+      latitude: exif.latitude,
+      longitude: exif.longitude,
+      artist: exif.Artist,
+      copyright: exif.Copyright,
+      orientation: exif.Orientation
+    };
+  } catch (error) {
+    // EXIF extraction failed - not all images have EXIF (e.g., screenshots, edited photos)
+    // Log the error for debugging but return null to continue processing
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.warn(`EXIF extraction failed: ${errorMessage}`);
+    return null;
+  }
+}
+
+/**
+ * Format camera name for blob tag (spaces to dashes, max 256 chars)
+ */
+function formatCameraName(make?: string, model?: string): string {
+  if (!make && !model) return '';
+  
+  let camera = '';
+  if (make && model) {
+    // Remove redundant make from model (e.g., "Canon" from "Canon EOS 5D")
+    const modelWithoutMake = model.replace(new RegExp(`^${make}\\s*`, 'i'), '');
+    camera = `${make} ${modelWithoutMake}`.trim();
+  } else {
+    camera = (make || model || '').trim();
+  }
+  
+  // Convert spaces to dashes and limit length
+  return camera.replace(/\s+/g, '-').substring(0, 256);
+}
+
+/**
+ * Format lens name for blob tag (spaces to dashes, max 256 chars)
+ */
+function formatLensName(lensModel?: string): string {
+  if (!lensModel) return '';
+  
+  // Convert spaces to dashes and limit length
+  return lensModel.replace(/\s+/g, '-').substring(0, 256);
+}
+
+/**
+ * Format date for blob tag (YYYY-MM-DD)
+ */
+function formatDateTaken(date?: Date): string {
+  if (!date) return new Date().toISOString().split('T')[0];
+  
+  try {
+    const d = new Date(date);
+    return d.toISOString().split('T')[0];
+  } catch {
+    return new Date().toISOString().split('T')[0];
+  }
+}
+
+/**
+ * Format GPS location for blob tag (simplified, no reverse geocoding yet)
+ * Returns lat/lon in format: "37.82N-122.48W" or empty string
+ */
+function formatLocation(latitude?: number, longitude?: number): string {
+  if (latitude === undefined || longitude === undefined) return '';
+  
+  const latDir = latitude >= 0 ? 'N' : 'S';
+  const lonDir = longitude >= 0 ? 'E' : 'W';
+  const latStr = Math.abs(latitude).toFixed(2);
+  const lonStr = Math.abs(longitude).toFixed(2);
+  
+  return `${latStr}${latDir}-${lonStr}${lonDir}`;
+}
+
+/**
+ * Create blob tags from EXIF data
+ */
+function createBlobTags(exif: ExifData | null, author: string = 'default-user'): BlobTags {
+  return {
+    author: author,
+    dateTaken: formatDateTaken(exif?.dateTimeOriginal),
+    camera: formatCameraName(exif?.make, exif?.model),
+    lens: formatLensName(exif?.lensModel),
+    location: formatLocation(exif?.latitude, exif?.longitude),
+    rating: '0',
+    customTag1: '',
+    customTag2: '',
+    customTag3: '',
+    favorite: 'false'
+  };
 }
