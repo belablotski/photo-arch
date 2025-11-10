@@ -2,6 +2,7 @@
   "name": "photo-archive-backend",
   "version": "1.0.0",
   "description": "Azure Functions backend for Photo Archive",
+  "main": "dist/app.js",
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",

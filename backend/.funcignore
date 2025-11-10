@@ -9,3 +9,8 @@ tsconfig.json
 .eslintrc.js
 node_modules
 .DS_Store
+
+# Exclude old v3/hybrid function folders (migrated to v4)
+generate-sas-token/
+process-image/
+get-photos/

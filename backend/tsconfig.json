@@ -3,7 +3,7 @@
     "module": "commonjs",
     "target": "ES2019",
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "src",
     "sourceMap": true,
     "strict": true,
     "esModuleInterop": true,
@@ -13,7 +13,7 @@
     "moduleResolution": "node"
   },
   "include": [
-    "**/*.ts"
+    "src/**/*.ts"
   ],
   "exclude": [
     "node_modules",
