@@ -30,6 +30,27 @@ This document outlines the development roadmap for the Photo Archive application
 - Automatic cleanup and metadata storage
 - Tested with multiple images successfully
 
+✅ **Phase 2: Backend Core - Priority 3** (COMPLETED)
+- Photo Retrieval API implemented and tested
+- Filtering by blob index tags (author, date, camera, rating, etc.)
+- Pagination with continuation tokens
+- SAS URL generation for secure photo access
+
+✅ **Phase 2: Backend Core - Priority 3.5** (COMPLETED)
+- Content-hash based naming with deduplication
+- SHA-256 hash postfix prevents filename collisions
+- Server-side hash calculation (no client complexity)
+- Automatic duplicate detection and skipping
+- Original filename preserved in metadata
+
+✅ **Azure Functions v4 Migration** (COMPLETED - Nov 10, 2025)
+- Migrated from hybrid v3/v4 to pure v4 programming model
+- All functions use `app.http()` and `app.storageBlob()` registration
+- Entry point: `src/app.ts` imports all functions
+- No more `function.json` files
+- Better TypeScript support and cleaner code
+- See `backend/V4_MIGRATION_COMPLETE.md` for details
+
 **Deployment outputs:**
 - Storage Account: `photoarchdev<unique-hash>st`
 - Resource Group: `photo-archive-dev-rg`
@@ -69,10 +90,13 @@ backend/
 - ✅ Code committed and pushed to GitHub
 
 **Technical Implementation Details:**
-- **Programming Model:** Azure Functions v4 (recommended)
-  - Parameter order: `request, context` (not `context, request`)
-  - Logging: Use `context.info()`, `context.warn()`, `context.error()`
-  - See `.github/copilot-instructions.md` for full v4 model guidelines
+- **Programming Model:** Azure Functions v4 (pure v4 model) ✅ **MIGRATED**
+  - Uses `app.http()` registration in function files
+  - Entry point: `src/app.ts` imports all functions
+  - Request parsing: `request.json()` works properly
+  - Query params: `request.query.get('paramName')`
+  - No `function.json` files needed
+  - See `backend/V4_MIGRATION_COMPLETE.md` and `.github/copilot-instructions.md` for details
 - **Dependencies:** @azure/functions 4.5.0, @azure/storage-blob 12.17.0
 - **Security:** Connection strings in `local.settings.json` (gitignored)
 
@@ -115,9 +139,11 @@ backend/test-process-image.sh     # Test upload script ✅
 - **Image Processing:** Sharp library (native C++, fast)
 - **Thumbnail:** 300px width (configurable), maintains aspect ratio
 - **Output:** Optimized JPEG, 85% quality, progressive
-- **Metadata:** Width, height, format, size, upload date
+- **Metadata:** Width, height, format, size, upload date, originalFilename
 - **Error Strategy:** Leave blob in landing-zone for automatic retry
-- **v4 Model Note:** Uses `context.triggerMetadata.blobTrigger` to get blob path
+- **v4 Model:** Uses `app.storageBlob()` registration
+- **Naming Strategy:** Content-hash postfix (`{name}_{hash8}.{ext}`) ✅ **IMPLEMENTED**
+- **Deduplication:** Checks if hash-based filename exists, skips if duplicate ✅ **IMPLEMENTED**
 - **Compression:** Achieves ~99.5% size reduction (2.8MB → 13KB thumbnails)
 
 **Test Results:**
@@ -129,79 +155,155 @@ Processing:   ✅ Automatic trigger, metadata preserved
 ```
 
 **Known Issues / Future Enhancements:**
-- ⚠️ **Filename Collision Handling:** Currently preserves original filenames, which can cause overwrites
-  - See Priority 3.5 below for collision prevention strategy
+- ✅ **Filename Collision Handling:** RESOLVED via Priority 3.5 (content-hash naming)
 
-**Next:** Commit changes, then implement Priority 3 (Photo Retrieval API)
+**Next:** Priority 3 (Photo Retrieval API) ✅ COMPLETED
 
 ---
 
-### 🔥 **PRIORITY 3: Photo Retrieval API**
+### 🔥 **PRIORITY 3: Photo Retrieval API** ✅ COMPLETED
 
-**Why Critical:**
-- Enables photo gallery display
-- Required for frontend browsing
-- Completes read workflow
+**Status:** ✅ Implemented and tested successfully (Nov 10, 2025)
 
 **Implementation:**
 ```
-backend/get-photos/
-├── index.ts          # HTTP trigger handler
-├── function.json     # Function configuration
-└── README.md         # Function documentation
+backend/src/functions/getPhotos.ts  ✅ Implemented
+backend/test-get-photos.sh          ✅ Test script
 ```
 
-
-### 🔥 **PRIORITY 3: Photo Retrieval API**
-
-**Why Critical:**
-- Enables photo gallery display
-- Required for frontend browsing
-- Completes read workflow
-
-**Implementation:**
-```
-backend/functions/get-photos/
-├── index.ts          # HTTP trigger handler
-├── function.json     # Function configuration
-└── README.md         # Function documentation
-```
-
-**Functionality:**
-1. HTTP-triggered (GET `/api/photos`)
-2. Query parameters: `?limit=20&continuationToken=xxx`
-3. Lists photos from `photos/` container
-4. Returns metadata and thumbnail URLs
-5. Supports pagination
+**Completed:**
+- ✅ HTTP-triggered (GET `/api/photos`)
+- ✅ Query parameters: `limit`, `continuationToken`, tag filters
+- ✅ Lists photos from `photos/` container with metadata
+- ✅ Returns SAS URLs for thumbnails and full photos (1 hour expiration)
+- ✅ Supports pagination via continuation tokens
+- ✅ Filtering by blob index tags (author, dateTaken, camera, rating, etc.)
+- ✅ Comparison operators for date and rating (>=, <=, >, <, =)
+- ✅ Tested locally with multiple photos
 
 **Response Format:**
 ```json
 {
   "photos": [
     {
-      "id": "photo-123.jpg",
-      "thumbnailUrl": "https://...",
-      "uploadDate": "2025-10-26T...",
-      "size": 2048576,
-      "dimensions": { "width": 4032, "height": 3024 }
+      "id": "DSC_0001_d1cf8277.jpg",
+      "originalFilename": "DSC_0001.jpg",
+      "thumbnailUrl": "https://...<sas-token>",
+      "photoUrl": "https://...<sas-token>",
+      "uploadDate": "2025-11-10T05:39:45.000Z",
+      "size": 2804736,
+      "dimensions": { "width": 4032, "height": 3024 },
+      "format": "jpeg",
+      "tags": {
+        "author": "default-user",
+        "dateTaken": "2025-11-10",
+        "rating": "0"
+      }
     }
   ],
-  "continuationToken": "xxx",
-  "hasMore": true
+  "continuationToken": "...",
+  "hasMore": true,
+  "totalReturned": 20
 }
 ```
 
 **Acceptance Criteria:**
 - ✅ Returns list of photos with metadata
 - ✅ Pagination works correctly
-- ✅ Thumbnail URLs are accessible
-- ✅ Can test with browser
+- ✅ Thumbnail and photo URLs are accessible
+- ✅ Filtering by tags works (author, date, rating, etc.)
+- ✅ Can test with curl and browser
 
-**Estimated Time:** 3-4 hours
+**Test Results:**
+```bash
+# List all photos
+curl http://localhost:7071/api/photos
+
+# Filter by date (>=)
+curl "http://localhost:7071/api/photos?dateTaken>=2025-11-01"
+
+# Pagination
+curl "http://localhost:7071/api/photos?limit=10"
+```
+
+**Next:** Priority 3.5 (Filename Collision Prevention) ✅ COMPLETED
+
+---
+
+### 🔥 **PRIORITY 3.5: Filename Collision Prevention** ✅ COMPLETED
+
+**Status:** ✅ Implemented and tested successfully (Nov 10, 2025)
+
+---
+
+### 🔥 **PRIORITY 3.5: Filename Collision Prevention** ✅ COMPLETED
+
+**Status:** ✅ Implemented and tested successfully (Nov 10, 2025)
+
+**Why Important:**
+- Camera-generated filenames (DSC_0001.jpg, IMG_0001.jpg) collide across different shoots/users
+- Need unique identifiers while preserving original name for display
+- Enable automatic deduplication of identical photos
+
+**Implemented Solution: Content-based hashing**
+```typescript
+// Hash file content + generate unique name
+const fileHash = createHash('sha256').update(blobBuffer).digest('hex');
+const hashPrefix = fileHash.substring(0, 8);
+const permanentBlobName = `${nameWithoutExt}_${hashPrefix}${extension}`;
+// Example: DSC_0001.jpg → DSC_0001_d1cf8277.jpg
+```
+
+**Benefits:**
+- ✅ Automatic deduplication of identical photos (same content = same hash)
+- ✅ Preserves context in filename (human-readable prefix)
+- ✅ No client-side complexity (hash calculated server-side)
+- ✅ Original filename preserved in blob metadata for UI display
+- ✅ Fast duplicate detection via blob.exists() check
+
+**Implementation:**
+```
+backend/src/functions/processImage.ts  ✅ Content-hash naming
+backend/src/functions/generateUploadToken.ts  ✅ Simple filename sanitization
+backend/test-upload-with-hash.sh  ✅ End-to-end test with deduplication
+```
+
+**Workflow:**
+1. Client uploads `DSC_0001.jpg` to landing-zone (original name)
+2. Process-image triggers automatically
+3. Calculate SHA-256 hash: `d1cf8277...`
+4. Generate permanent name: `DSC_0001_d1cf8277.jpg`
+5. Check if already exists (deduplication)
+6. If duplicate: delete from landing, skip processing
+7. If new: generate thumbnail, upload both, delete from landing
+
+**Test Results:**
+```bash
+# First upload
+./test-upload-with-hash.sh
+# Result: DSC_0001_d1cf8277.jpg created
+
+# Second upload (same file)
+./test-upload-with-hash.sh
+# Server log: "⚠️ Photo already exists: DSC_0001_d1cf8277.jpg - skipping upload (duplicate detected)"
+# Result: Duplicate detected and skipped ✅
+```
+
+**Acceptance Criteria:**
+- ✅ No filename collisions (different photos get different hashes)
+- ✅ Duplicate detection works (same photo uploaded twice is skipped)
+- ✅ Original filename preserved in metadata
+- ✅ Simple upload experience (no client-side hashing required)
+- ✅ Hash-based naming in archive storage
+- ✅ Tested end-to-end
+
+**Next:** Priority 3.8 (EXIF Extraction) - Future enhancement
 
 ---
 
 ## Phase 2: Frontend Development (After Backend Core)
+
+This section was previously "Filename Collision Prevention (Priority 3.5)" and has been moved up as completed.
 
 ### Step 4: React SPA Setup
 - Initialize React project
@@ -225,60 +327,6 @@ backend/functions/get-photos/
 ---
 
 ## Phase 3: Enhanced Features (Post-MVP)
-
-### Filename Collision Prevention (Priority 3.5)
-**Why Important:**
-- Current implementation preserves original filenames
-- Multiple photos with same name will overwrite each other
-- Need unique identifiers while preserving original name for display
-
-**Proposed Solutions:**
-
-**Option 1: UUID-based naming (Simplest for MVP)**
-```typescript
-// Generate unique name, store original in metadata
-const uniqueId = crypto.randomUUID();
-const extension = path.extname(originalName);
-const storedName = `${uniqueId}${extension}`;
-// Store originalName in blob metadata
-```
-- ✅ Simple, guaranteed unique
-- ✅ Fast lookups by ID
-- ❌ Loses human-readable names in storage
-
-**Option 2: Content-based hashing (Best for deduplication)**
-```typescript
-// Hash file content + store original name
-const hash = crypto.createHash('sha256').update(buffer).digest('hex');
-const storedName = `${hash}_${originalName}`;
-```
-- ✅ Automatic deduplication of identical photos
-- ✅ Preserves some context in filename
-- ❌ Slightly slower (need to hash full content)
-
-**Option 3: Date-based folders + UUID**
-```typescript
-// Organize by upload date
-const date = new Date().toISOString().split('T')[0]; // "2025-10-31"
-const storedPath = `${date}/${crypto.randomUUID()}${extension}`;
-```
-- ✅ Natural organization by date
-- ✅ Easy to browse by time period
-- ❌ More complex path structure
-
-**Recommendation for MVP:** Option 1 (UUID)
-- Implement in `generate-sas-token` or `process-image` function
-- Store `originalFilename` in blob metadata
-- Use UUID for storage, display original name in UI
-
-**Implementation Location:**
-- Frontend generates UUID before upload, OR
-- `generate-sas-token` generates UUID for SAS URL, OR  
-- `process-image` renames during processing (current approach)
-
-**Estimated Time:** 1-2 hours
-
----
 
 ### RAW+JPEG Pair Association (Priority 3.6)
 **Why Important:**
