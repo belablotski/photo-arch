@@ -2,77 +2,83 @@
 
 ## Azure Functions Programming Model
 
-**CRITICAL: This project uses a HYBRID model with @azure/functions 4.5.0**
+**CRITICAL: This project uses Azure Functions v4 (pure v4 model)**
 
-This project uses @azure/functions 4.5.0 package but with a **hybrid v3/v4 programming model**:
-- ✅ **Parameter order:** v3 style - `context` FIRST, then request/blob
-- ✅ **Logging:** v3 style - `context.log()` only
-- ✅ **Query params:** v3 style - `req.query.paramName` (plain object, not URLSearchParams)
-- ✅ **Response format:** v4 style - `jsonBody` instead of `body`
-- ✅ **Return type:** v4 style - Return `HttpResponseInit` directly
+This project uses @azure/functions 4.5.0 with the **pure v4 programming model**:
+- ✅ **Registration:** `app.http()` and `app.storageBlob()` in function files
+- ✅ **Entry point:** All functions imported in `src/app.ts`
+- ✅ **Request parsing:** `request.json()` works properly
+- ✅ **Query params:** `request.query.get('paramName')`
+- ✅ **Response format:** Return `HttpResponseInit` with `jsonBody`
+- ✅ **No function.json:** Configuration in code only
 
-### Function Signatures
+### Function Registration
+
+All functions are registered in their respective files and imported in `src/app.ts`.
 
 **HTTP Triggers:**
 ```typescript
-import { HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
+import { app, HttpRequest, HttpResponseInit, InvocationContext } from '@azure/functions';
 
-export async function functionName(
-  context: InvocationContext,
-  request: HttpRequest
-): Promise<HttpResponseInit> {
-  // Parameter order: context FIRST, request SECOND (v3 style)
-  context.log("Log message");  // Use context.log() for all logging (v3 style)
-  
-  // Parse query parameters (v3 style - plain object)
-  const query = request.query as any;
-  const param = query.paramName || 'default';
-  
-  // Parse body
-  const body = await request.json();
-  
-  // Return response (v4 style - jsonBody)
-  return {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-    jsonBody: { data: "value" }
-  };
-}
+app.http('function-name', {
+  methods: ['POST'],
+  authLevel: 'anonymous',
+  route: 'custom-route',  // Optional, defaults to function name
+  handler: async (request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> => {
+    context.log("Log message");
+    
+    // Parse body
+    const body = await request.json();
+    
+    // Parse query parameters
+    const param = request.query.get('paramName') || 'default';
+    
+    // Return response
+    return {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      jsonBody: { data: "value" }
+    };
+  }
+});
 ```
 
 **Blob Triggers:**
 ```typescript
-import { InvocationContext } from '@azure/functions';
+import { app, InvocationContext } from '@azure/functions';
 
-export async function functionName(
-  context: InvocationContext,
-  blob: Buffer
-): Promise<void> {
-  // Parameter order: context FIRST, blob SECOND (v3 style)
-  context.log("Processing blob");
-  
-  // Get blob name from binding data (v3 style)
-  const bindingData = (context as any).bindingData;
-  const blobName = bindingData?.name as string;
-  const blobPath = bindingData?.blobTrigger as string;
-}
+app.storageBlob('function-name', {
+  path: 'container-name/{name}',
+  connection: 'StorageConnectionString',
+  handler: async (blob: unknown, context: InvocationContext): Promise<void> => {
+    const blobBuffer = blob as Buffer;
+    const blobName = context.triggerMetadata?.name as string;
+    
+    context.log(`Processing: ${blobName}`);
+    // Process blob
+  }
+});
 ```
 
-### function.json Configuration
+### Main Entry Point
 
-All functions MUST include:
-```json
-{
-  "bindings": [...],
-  "scriptFile": "../dist/function-folder/index.js",
-  "entryPoint": "functionName"
-}
+`src/app.ts` imports all functions:
+```typescript
+import { app } from '@azure/functions';
+
+import './functions/generateUploadToken';
+import './functions/processImage';
+import './functions/getPhotos';
 ```
 
 ### Logging
 
-- ✅ `context.log()` - All logging (information, warnings, errors)
-- ❌ `context.info()`, `context.warn()`, `context.error()` - NOT available in @azure/functions 4.5.0
+Use `context.log()` for all logging:
+```typescript
+context.log('Information message');
+context.log(`Processing: ${filename}`);
+context.log('ERROR:', error);
+```
 
 ### Response Format
 
@@ -81,19 +87,17 @@ HTTP functions return `HttpResponseInit`:
 return {
   status: 200,
   headers: { "Content-Type": "application/json" },
-  jsonBody: { key: "value" }  // v4 style - use jsonBody, not body
+  jsonBody: { key: "value" }
 };
 ```
 
 ### Query Parameters
 
-Access query parameters as plain object properties (v3 runtime behavior):
+Access query parameters using `.get()` method:
 ```typescript
-const query = request.query as any;
-const param = query.paramName || 'defaultValue';
+const limit = parseInt(request.query.get('limit') || "20");
+const filter = request.query.get('author') || undefined;
 ```
-
-**Note:** Despite TypeScript types showing `URLSearchParams`, at runtime `request.query` is a plain object.
 
 ## TypeScript Configuration
 
@@ -106,10 +110,12 @@ const param = query.paramName || 'defaultValue';
 
 ```
 backend/
-├── function-name/
-│   ├── index.ts          # Function implementation
-│   ├── function.json     # Binding configuration (must include scriptFile + entryPoint)
-│   └── README.md         # Documentation
+├── src/
+│   ├── app.ts                       # Main entry point
+│   └── functions/
+│       ├── generateUploadToken.ts   # SAS token generation
+│       ├── processImage.ts          # Image processing & deduplication
+│       └── getPhotos.ts             # Photo retrieval API
 ├── host.json
 ├── package.json
 ├── tsconfig.json
@@ -143,10 +149,21 @@ await blobClient.setTags({
 
 ## Storage Containers
 
-- `landing-zone` - Temporary upload storage (cleaned after processing)
-- `photos` - Permanent photo archive (flat structure with UUID names)
-- `thumbnails` - Generated thumbnails (300px width, matching UUID)
+- `landing-zone` - Temporary upload storage (original filenames, cleaned after processing)
+- `photos` - Permanent photo archive (content-hash names: `{name}_{hash8}.{ext}`)
+- `thumbnails` - Generated thumbnails (300px width, matching hash-based names)
 - `$web` - Static website hosting
+
+## Naming Strategy
+
+**Problem:** Camera filenames like `DSC_0001.jpg`, `IMG_0001.jpg` collide across shoots/users.
+
+**Solution:** Content-hash postfix added server-side
+- Upload: `DSC_0001.jpg` → landing-zone (original, simple)
+- Process: Calculate SHA-256 hash → `d1cf8277...`
+- Archive: `DSC_0001_d1cf8277.jpg` → photos (unique, collision-free)
+- Metadata: `originalFilename: "DSC_0001.jpg"` preserved for display
+- Deduplication: Same content = same hash = skip duplicate
 
 ## Common Patterns
 
@@ -161,6 +178,25 @@ const sasToken = generateBlobSASQueryParameters({
   startsOn: new Date(),
   expiresOn: new Date(Date.now() + 60 * 60 * 1000) // 1 hour
 }, sharedKeyCredential).toString();
+```
+
+### Content-Hash Naming
+```typescript
+import { createHash } from 'crypto';
+
+const fileHash = createHash('sha256').update(blobBuffer).digest('hex');
+const hashPrefix = fileHash.substring(0, 8);
+const permanentBlobName = `${nameWithoutExt}_${hashPrefix}${extension}`;
+```
+
+### Deduplication Check
+```typescript
+const photoBlobClient = containerClient.getBlockBlobClient(permanentBlobName);
+const photoExists = await photoBlobClient.exists();
+if (photoExists) {
+  // Skip duplicate, delete from landing zone
+  return;
+}
 ```
 
 ### List Blobs with Pagination
@@ -221,27 +257,26 @@ try {
 
 ## Common Mistakes to Avoid
 
-❌ Wrong parameter order (request/blob first) - Context must be FIRST
-❌ Using `context.info()`, `context.warn()`, `context.error()` (not available)
-❌ Using `request.query.get('param')` - Use `request.query.param` instead (plain object at runtime)
+❌ Using `function.json` files (v3 style) - Use `app.http()` registration instead  
+❌ Wrong parameter order (blob/request first) - In v4, request/blob comes first, context second  
+❌ Using `context.info()`, `context.warn()`, `context.error()` - Use `context.log()` only  
 ❌ Using `body:` instead of `jsonBody:` in HTTP responses  
-❌ Forgetting `scriptFile` and `entryPoint` in function.json  
 ❌ Spaces in blob tag values (use hyphens: "Canon-5D-Mark-IV")  
-❌ Numeric blob tag values (all values must be strings)
+❌ Numeric blob tag values (all values must be strings)  
+❌ Forgetting to import functions in `src/app.ts`
 
 ## Best Practices
 
 ✅ Use TypeScript strict mode  
-✅ Context parameter FIRST in all functions
-✅ Cast `request.query` to `any` to access properties
+✅ Use `app.http()` and `app.storageBlob()` for function registration  
+✅ Import all functions in `src/app.ts`  
 ✅ Add proper JSDoc comments to functions  
-✅ Include README.md for each function  
 ✅ Use descriptive variable names  
 ✅ Log important operations with context.log()  
 ✅ Return structured error responses  
 ✅ Include test scripts for manual testing  
 ✅ Store original filename in blob metadata  
-✅ Generate unique blob names (UUIDs) to prevent collisions
+✅ Generate content-hash names server-side for deduplication
 
 ## Metadata Architecture
 
@@ -253,17 +288,17 @@ try {
 
 1. ✅ SAS Token Generation (Priority 1)
 2. ✅ Image Processing (Priority 2)  
-3. 🔄 Photo Retrieval API (Priority 3) - IN PROGRESS
-4. Frontend Upload UI
-5. Frontend Gallery
-6. UUID-based naming (Priority 3.5)
-7. EXIF extraction (Priority 3.8)
-8. Sidecar JSON (Priority 3.9)
+3. ✅ Photo Retrieval API (Priority 3)
+4. ✅ Content-hash naming with deduplication (Priority 3.5)
+5. ⬜ EXIF extraction (Priority 3.8)
+6. ⬜ Sidecar JSON (Priority 3.9)
+7. ⬜ Frontend Upload UI
+8. ⬜ Frontend Gallery
 
 ---
 
-**Last Updated:** November 2, 2025  
-**Programming Model:** Hybrid v3/v4 (v3 parameter order & logging, v4 response format)  
+**Last Updated:** November 10, 2025  
+**Programming Model:** Azure Functions v4 (pure)  
 **Package Version:** @azure/functions 4.5.0
 **Node.js Version:** 18+  
 **TypeScript Version:** 5.3.3
