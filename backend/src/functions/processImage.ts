@@ -30,6 +30,9 @@ interface ExifData {
   artist?: string;
   copyright?: string;
   orientation?: number;
+  // Image dimensions (from RAW files)
+  imageWidth?: number;
+  imageHeight?: number;
 }
 
 interface BlobTags {
@@ -113,7 +116,7 @@ app.storageBlob('process-image', {
 
       // Extract EXIF data
       context.log(`Extracting EXIF data...`);
-      const exifData = await extractExifData(blobBuffer);
+      const exifData = await extractExifData(blobBuffer, originalFilename);
       if (exifData) {
         context.log(`EXIF extracted: camera=${exifData.make} ${exifData.model}, lens=${exifData.lensModel}, date=${exifData.dateTimeOriginal}`);
       } else {
@@ -155,12 +158,17 @@ app.storageBlob('process-image', {
 
       // Upload original to photos container with content-hash name
       context.log(`Copying original to ${photosContainer}/${permanentBlobName}...`);
+      
+      // For RAW files, use dimensions from EXIF; for JPEG, use Sharp metadata
+      const actualWidth = (isRawFile && exifData?.imageWidth) ? exifData.imageWidth : imageMetadata.width;
+      const actualHeight = (isRawFile && exifData?.imageHeight) ? exifData.imageHeight : imageMetadata.height;
+      
       await photoBlobClient.uploadData(blobBuffer, {
         metadata: {
           originalFilename: originalFilename,  // Store original camera filename
           uploadDate: new Date().toISOString(),
-          width: imageMetadata.width.toString(),
-          height: imageMetadata.height.toString(),
+          width: actualWidth.toString(),
+          height: actualHeight.toString(),
           format: imageMetadata.format,
           // Add EXIF metadata
           ...(exifData?.iso && { iso: exifData.iso.toString() }),
@@ -181,9 +189,27 @@ app.storageBlob('process-image', {
       const thumbnailBlobName = `${nameWithoutExt}_${hashPrefix}.jpg`;
       context.log(`Copying thumbnail to ${thumbnailsContainer}/${thumbnailBlobName}...`);
       const thumbnailBlobClient = thumbnailsContainerClient.getBlockBlobClient(thumbnailBlobName);
+      
+      // Get thumbnail dimensions for metadata
+      const thumbnailMetadata = await getImageMetadata(thumbnailBuffer);
+      
       await thumbnailBlobClient.uploadData(thumbnailBuffer, {
         metadata: {
-          originalFilename: originalFilename  // Store original camera filename
+          originalFilename: originalFilename,  // Store original camera filename
+          uploadDate: new Date().toISOString(),
+          width: thumbnailMetadata.width.toString(),
+          height: thumbnailMetadata.height.toString(),
+          format: thumbnailMetadata.format,
+          // Add EXIF metadata (same as main photo)
+          ...(exifData?.iso && { iso: exifData.iso.toString() }),
+          ...(exifData?.fNumber && { aperture: `f/${exifData.fNumber}` }),
+          ...(exifData?.exposureTime && { shutterSpeed: `1/${Math.round(1 / exifData.exposureTime)}` }),
+          ...(exifData?.focalLength && { focalLength: `${exifData.focalLength}mm` }),
+          ...(exifData?.artist && { artist: exifData.artist }),
+          ...(exifData?.copyright && { copyright: exifData.copyright }),
+          // Link to original photo for reference
+          originalPhotoWidth: actualWidth.toString(),
+          originalPhotoHeight: actualHeight.toString()
         },
       });
 
@@ -290,47 +316,135 @@ async function generateThumbnail(imageBuffer: Buffer, width: number, filename?: 
 }
 
 /**
- * Extract EXIF data from image buffer (works with JPEG and RAW formats)
+ * Extract EXIF data from image buffer or RAW file (works with JPEG and RAW formats)
  */
-async function extractExifData(imageBuffer: Buffer): Promise<ExifData | null> {
+async function extractExifData(imageBuffer: Buffer, filename: string): Promise<ExifData | null> {
   try {
-    const exif = await exifr.parse(imageBuffer, {
-      // For RAW files, we need to enable more parsers
-      tiff: true,
-      exif: true,
-      gps: true,
-      // Extract specific fields we need
-      pick: [
-        'Make', 'Model',
-        'LensModel', 'LensMake',
-        'DateTimeOriginal', 'CreateDate',
-        'ISO', 'FNumber', 'ExposureTime', 'FocalLength',
-        'latitude', 'longitude',
-        'Artist', 'Copyright',
-        'Orientation'
-      ]
-    });
+    // Check if it's a RAW file (exifr doesn't support CR3 and many other RAW formats)
+    const isRawFile = /\.(cr2|cr3|nef|arw|raf|orf|rw2|dng|pef)$/i.test(filename);
+    
+    if (isRawFile) {
+      // Use exiftool for RAW files
+      const tempFilePath = join(tmpdir(), `exif-${Date.now()}-${filename}`);
+      
+      try {
+        // Write buffer to temp file
+        await writeFile(tempFilePath, imageBuffer);
+        
+        // Read EXIF with exiftool
+        const tags = await exiftool.read(tempFilePath);
+        
+        // Clean up temp file
+        await unlink(tempFilePath);
+        
+        // Convert exiftool types to our ExifData types
+        // exiftool returns ExifDateTime objects that have a toDate() method
+        const dateTimeOriginal = tags.DateTimeOriginal || tags.CreateDate;
+        const parsedDate = dateTimeOriginal ? (
+          typeof dateTimeOriginal === 'object' && dateTimeOriginal && 'toDate' in dateTimeOriginal
+            ? (dateTimeOriginal as any).toDate()
+            : typeof dateTimeOriginal === 'string'
+            ? new Date(dateTimeOriginal)
+            : undefined
+        ) : undefined;
+        
+        // Parse numeric values that might be strings
+        const parseFocalLength = (val: any): number | undefined => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') {
+            const match = val.match(/[\d.]+/);
+            return match ? parseFloat(match[0]) : undefined;
+          }
+          return undefined;
+        };
+        
+        const parseCoordinate = (val: any): number | undefined => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') return parseFloat(val);
+          return undefined;
+        };
+        
+        const parseExposureTime = (val: any): number | undefined => {
+          if (typeof val === 'number') return val;
+          if (typeof val === 'string') {
+            // Handle fraction format like "1/40"
+            if (val.includes('/')) {
+              const [num, den] = val.split('/');
+              return parseInt(num) / parseInt(den);
+            }
+            return parseFloat(val);
+          }
+          return undefined;
+        };
+        
+        return {
+          make: tags.Make,
+          model: tags.Model,
+          lensModel: tags.LensModel || tags.Lens,
+          lensMake: tags.LensMake,
+          dateTimeOriginal: parsedDate,
+          iso: tags.ISO,
+          fNumber: tags.FNumber || tags.ApertureValue,
+          exposureTime: parseExposureTime(tags.ExposureTime || tags.ShutterSpeedValue),
+          focalLength: parseFocalLength(tags.FocalLength),
+          latitude: parseCoordinate(tags.GPSLatitude),
+          longitude: parseCoordinate(tags.GPSLongitude),
+          artist: tags.Artist,
+          copyright: tags.Copyright,
+          orientation: tags.Orientation,
+          // Extract actual RAW file dimensions
+          imageWidth: tags.ImageWidth || tags.ExifImageWidth,
+          imageHeight: tags.ImageHeight || tags.ExifImageHeight
+        };
+      } catch (exiftoolError) {
+        const errorMessage = exiftoolError instanceof Error ? exiftoolError.message : 'Unknown error';
+        console.warn(`exiftool EXIF extraction failed: ${errorMessage}`);
+        
+        // Clean up temp file if it exists
+        try {
+          await unlink(tempFilePath);
+        } catch {}
+        
+        return null;
+      }
+    } else {
+      // Use exifr for JPEG/TIFF files
+      const exif = await exifr.parse(imageBuffer, {
+        tiff: true,
+        exif: true,
+        gps: true,
+        pick: [
+          'Make', 'Model',
+          'LensModel', 'LensMake',
+          'DateTimeOriginal', 'CreateDate',
+          'ISO', 'FNumber', 'ExposureTime', 'FocalLength',
+          'latitude', 'longitude',
+          'Artist', 'Copyright',
+          'Orientation'
+        ]
+      });
 
-    if (!exif) {
-      return null;
+      if (!exif) {
+        return null;
+      }
+
+      return {
+        make: exif.Make,
+        model: exif.Model,
+        lensModel: exif.LensModel,
+        lensMake: exif.LensMake,
+        dateTimeOriginal: exif.DateTimeOriginal || exif.CreateDate,
+        iso: exif.ISO,
+        fNumber: exif.FNumber,
+        exposureTime: exif.ExposureTime,
+        focalLength: exif.FocalLength,
+        latitude: exif.latitude,
+        longitude: exif.longitude,
+        artist: exif.Artist,
+        copyright: exif.Copyright,
+        orientation: exif.Orientation
+      };
     }
-
-    return {
-      make: exif.Make,
-      model: exif.Model,
-      lensModel: exif.LensModel,
-      lensMake: exif.LensMake,
-      dateTimeOriginal: exif.DateTimeOriginal || exif.CreateDate,
-      iso: exif.ISO,
-      fNumber: exif.FNumber,
-      exposureTime: exif.ExposureTime,
-      focalLength: exif.FocalLength,
-      latitude: exif.latitude,
-      longitude: exif.longitude,
-      artist: exif.Artist,
-      copyright: exif.Copyright,
-      orientation: exif.Orientation
-    };
   } catch (error) {
     // EXIF extraction failed - not all images have EXIF (e.g., screenshots, edited photos)
     // Log the error for debugging but return null to continue processing
