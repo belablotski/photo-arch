@@ -3,6 +3,10 @@ import { BlobServiceClient } from '@azure/storage-blob';
 import { createHash } from 'crypto';
 import sharp from 'sharp';
 import exifr from 'exifr';
+import { exiftool } from 'exiftool-vendored';
+import { writeFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 interface ImageMetadata {
   width: number;
@@ -173,9 +177,10 @@ app.storageBlob('process-image', {
       context.log(`Setting blob tags: ${JSON.stringify(blobTags)}`);
       await photoBlobClient.setTags(blobTags);
 
-      // Upload thumbnail to thumbnails container with same content-hash name
-      context.log(`Copying thumbnail to ${thumbnailsContainer}/${permanentBlobName}...`);
-      const thumbnailBlobClient = thumbnailsContainerClient.getBlockBlobClient(permanentBlobName);
+      // Upload thumbnail to thumbnails container with .jpg extension (thumbnails are always JPEG)
+      const thumbnailBlobName = `${nameWithoutExt}_${hashPrefix}.jpg`;
+      context.log(`Copying thumbnail to ${thumbnailsContainer}/${thumbnailBlobName}...`);
+      const thumbnailBlobClient = thumbnailsContainerClient.getBlockBlobClient(thumbnailBlobName);
       await thumbnailBlobClient.uploadData(thumbnailBuffer, {
         metadata: {
           originalFilename: originalFilename  // Store original camera filename
@@ -217,7 +222,7 @@ async function getImageMetadata(imageBuffer: Buffer): Promise<ImageMetadata> {
 /**
  * Generate thumbnail using sharp
  * Maintains aspect ratio
- * For RAW files, extracts embedded JPEG preview first
+ * For RAW files, extracts embedded JPEG preview using exiftool
  */
 async function generateThumbnail(imageBuffer: Buffer, width: number, filename?: string, context?: InvocationContext): Promise<Buffer> {
   let sourceBuffer = imageBuffer;
@@ -226,30 +231,51 @@ async function generateThumbnail(imageBuffer: Buffer, width: number, filename?: 
   const isRawFile = filename && /\.(cr2|cr3|nef|arw|raf|orf|rw2|dng|pef)$/i.test(filename);
   
   if (isRawFile) {
+    // For RAW files, use exiftool to extract embedded preview
+    let tempFilePath: string | null = null;
     try {
-      // Try to extract embedded JPEG preview from RAW file using exifr
       if (context) {
-        context.log(`Attempting to extract embedded preview from RAW file: ${filename}`);
+        context.log(`Extracting embedded preview from RAW file using exiftool: ${filename}`);
       }
       
-      const embeddedJpeg = await exifr.thumbnail(imageBuffer);
-      if (embeddedJpeg && embeddedJpeg.byteLength > 0) {
-        sourceBuffer = Buffer.from(embeddedJpeg);
-        if (context) {
-          context.log(`✅ Extracted embedded JPEG preview (${embeddedJpeg.byteLength} bytes) from RAW file: ${filename}`);
-        }
-      } else {
-        throw new Error('No embedded preview found');
+      // Write buffer to temp file (exiftool needs file path)
+      const tempFileName = `raw_${Date.now()}_${filename}`;
+      tempFilePath = join(tmpdir(), tempFileName);
+      await writeFile(tempFilePath, imageBuffer);
+      
+      // Extract preview using exiftool (requires output file path)
+      const previewPath = join(tmpdir(), `preview_${Date.now()}.jpg`);
+      await exiftool.extractPreview(tempFilePath, previewPath);
+      
+      // Read the preview file
+      const fs = await import('fs/promises');
+      sourceBuffer = await fs.readFile(previewPath);
+      
+      // Clean up preview file
+      try {
+        await fs.unlink(previewPath);
+      } catch {}
+      
+      if (context) {
+        context.log(`✅ Extracted embedded JPEG preview (${sourceBuffer.length} bytes) from RAW file: ${filename}`);
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       if (context) {
-        context.log(`⚠️ RAW preview extraction failed: ${errorMessage}`);
-        context.log(`⚠️ RAW file processing not supported - skipping thumbnail generation for: ${filename}`);
+        context.log(`ERROR: Failed to extract RAW preview for ${filename}: ${errorMessage}`);
       }
-      // For now, throw error - RAW files without embedded previews cannot be processed
-      // TODO: In future, could use external RAW processing library or skip RAW files gracefully
-      throw new Error(`Cannot generate thumbnail for RAW file ${filename}: ${errorMessage}. RAW files must have embedded JPEG previews.`);
+      throw new Error(`Cannot generate thumbnail for RAW file ${filename}: ${errorMessage}`);
+    } finally {
+      // Clean up temp file
+      if (tempFilePath) {
+        try {
+          await unlink(tempFilePath);
+        } catch (cleanupError) {
+          if (context) {
+            context.log(`Warning: Failed to delete temp file ${tempFilePath}`);
+          }
+        }
+      }
     }
   }
   
