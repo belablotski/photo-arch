@@ -127,6 +127,8 @@ backend/
 - `@azure/functions`: ^4.5.0
 - `@azure/storage-blob`: ^12.17.0  
 - `sharp`: ^0.34.4 (image processing)
+- `exifr`: ^7.1.3 (EXIF extraction from JPEG)
+- `exiftool-vendored`: ^29.1.0 (RAW file support and EXIF extraction)
 
 ## Blob Tag Schema (10 tags max)
 
@@ -290,15 +292,17 @@ try {
 2. ✅ Image Processing (Priority 2)  
 3. ✅ Photo Retrieval API (Priority 3)
 4. ✅ Content-hash naming with deduplication (Priority 3.5)
-5. ⬜ EXIF extraction (Priority 3.8)
-6. ⬜ Sidecar JSON (Priority 3.9)
-7. ⬜ Frontend Upload UI
-8. ⬜ Frontend Gallery
+5. ✅ EXIF extraction (Priority 3.8)
+6. ✅ RAW file support with exiftool-vendored
+7. ⬜ Sidecar JSON (Priority 3.9) - Optional for MVP
+8. ⬜ Frontend Upload UI
+9. ⬜ Frontend Gallery
 
 ---
 
-**Last Updated:** November 10, 2025  
+**Last Updated:** November 23, 2025  
 **Programming Model:** Azure Functions v4 (pure)  
 **Package Version:** @azure/functions 4.5.0
 **Node.js Version:** 18+  
 **TypeScript Version:** 5.3.3
+**RAW Support:** CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF via exiftool-vendored

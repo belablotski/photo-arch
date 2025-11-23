@@ -512,7 +512,10 @@ await blobClient.setTags({
 
 ---
 
-### EXIF Metadata Extraction (Priority 3.8)
+### EXIF Metadata Extraction (Priority 3.8) ✅ COMPLETED
+
+**Status:** ✅ Implemented and tested successfully (Nov 23, 2025)
+
 **Why Important:**
 - Sort photos by actual date taken (not upload date)
 - Enable map view with GPS coordinates
@@ -520,31 +523,77 @@ await blobClient.setTags({
 - Preserve photographer's original metadata
 
 **Implementation:**
-- Add `exifr` library to extract EXIF data
-- Extract key fields: DateTimeOriginal, Make, Model, GPS, Orientation
-- Store in blob metadata for fast queries
-- Handle missing EXIF gracefully (screenshots, web images)
+- ✅ Added `exifr` library for JPEG EXIF extraction
+- ✅ Added `exiftool-vendored` library for RAW file support (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+- ✅ Extract key fields: DateTimeOriginal, Make, Model, LensModel, ISO, aperture, shutter speed, focal length, GPS, orientation
+- ✅ Store in blob metadata for both photos and thumbnails
+- ✅ Convert to blob index tags for fast filtering (camera, lens, dateTaken)
+- ✅ Handle missing EXIF gracefully with try-catch and console.warn
+- ✅ RAW file preview extraction using exiftool.extractPreview()
+- ✅ Correct image dimensions from RAW files (6000x4000 vs thumbnail 300x200)
 
-**Key EXIF Fields:**
+**Implemented EXIF Fields:**
 ```typescript
 {
-  dateTaken: string;        // EXIF DateTimeOriginal
-  camera: string;           // EXIF Make + Model  
-  gpsLatitude: string;      // EXIF GPS
-  gpsLongitude: string;     // EXIF GPS
-  orientation: string;      // EXIF Orientation
-  focalLength: string;      // Optional: lens info
-  aperture: string;         // Optional: f-stop
-  iso: string;              // Optional: ISO value
+  // Blob Metadata (stored on both photo and thumbnail)
+  iso: string;                    // "400"
+  aperture: string;               // "f/8"
+  shutterSpeed: string;           // "1/40"
+  focalLength: string;            // "15mm"
+  artist: string;                 // Artist name
+  copyright: string;              // Copyright info
+  width: string;                  // Actual RAW dimensions (6000)
+  height: string;                 // Actual RAW dimensions (4000)
+  
+  // Blob Tags (for filtering)
+  camera: string;                 // "Canon-EOS-M50m2"
+  lens: string;                   // "EF-M15-45mm-f3.5-6.3-IS-STM"
+  dateTaken: string;              // "2025-08-24"
 }
 ```
 
-**Limitations:**
-- Azure Blob metadata: 8KB max, ASCII only
-- Need to be selective about fields
-- Some images won't have EXIF
+**RAW File Support:**
+- ✅ CR3 (Canon EOS R series, M50m2) - Tested successfully
+- ✅ CR2 (Canon 5D, 6D, etc.)
+- ✅ NEF (Nikon)
+- ✅ ARW (Sony)
+- ✅ RAF (Fujifilm)
+- ✅ ORF (Olympus)
+- ✅ RW2 (Panasonic)
+- ✅ DNG (Adobe Universal RAW)
+- ✅ PEF (Pentax)
 
-**Estimated Time:** 2-3 hours
+**Technical Details:**
+- exifr: Used for JPEG/TIFF files (fast, lightweight)
+- exiftool-vendored: Used for RAW files (includes binary, no separate install needed)
+- Thumbnail format: Always JPEG (.jpg extension) regardless of source format
+- Temp file handling: Write RAW to tmpdir(), extract preview, cleanup
+- Type conversions: ExifDateTime → Date, string fractions → numbers
+
+**Test Results:**
+```bash
+# JPEG test
+✅ Full EXIF extraction: Canon EOS M50m2, EF-M15-45mm, ISO 400, f/8, 1/40s, 15mm
+
+# CR3 RAW test  
+✅ Preview extraction: 28.8MB CR3 → 300px JPEG thumbnail
+✅ EXIF extraction: Camera, lens, all settings
+✅ Correct dimensions: 6000x4000 (RAW) vs 300x200 (thumbnail)
+✅ Blob tags applied to both photo and thumbnail
+✅ Metadata on both photo and thumbnail
+```
+
+**Acceptance Criteria:**
+- ✅ EXIF extracted from JPEG files
+- ✅ EXIF extracted from RAW files (CR3, NEF, ARW, etc.)
+- ✅ Thumbnails generated from RAW previews
+- ✅ Correct dimensions stored (RAW dimensions, not thumbnail dimensions)
+- ✅ Blob tags for fast filtering
+- ✅ Graceful handling of missing EXIF
+- ✅ Thumbnails always in JPEG format
+- ✅ Full metadata on both photos and thumbnails
+
+**Next:** Priority 3.9 (Sidecar JSON) - Optional, can defer for MVP
 
 ---
 

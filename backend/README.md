@@ -9,6 +9,8 @@ Azure Functions backend for the Photo Archive application using **Azure Function
 - **Framework**: Azure Functions v4 (pure v4 model)
 - **Storage SDK**: @azure/storage-blob 12.17
 - **Image Processing**: sharp 0.34
+- **EXIF Extraction**: exifr 7.1.3 (JPEG), exiftool-vendored 29.1.0 (RAW files)
+- **RAW Support**: CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF
 
 ## Project Structure
 
@@ -33,8 +35,10 @@ backend/
 
 ✅ **Content-Hash Based Naming** - Automatic deduplication via SHA-256 hash postfix  
 ✅ **Automatic Image Processing** - Thumbnail generation with sharp  
+✅ **RAW File Support** - CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF via exiftool  
+✅ **EXIF Extraction** - Full metadata from JPEG and RAW files  
 ✅ **SAS Token Security** - Time-limited upload tokens  
-✅ **Blob Index Tags** - Fast filtering by author, date, camera, rating  
+✅ **Blob Index Tags** - Fast filtering by author, date, camera, rating, lens  
 ✅ **Flat Storage Structure** - No directories, tags for organization  
 ✅ **Original Filename Preservation** - Stored in metadata for display
 
@@ -463,8 +467,9 @@ See [V4_MIGRATION_COMPLETE.md](./V4_MIGRATION_COMPLETE.md) for migration details
 - [x] Image processing with thumbnails (Priority 2)
 - [x] Photo retrieval API with filtering (Priority 3)
 - [x] Content-hash naming with deduplication (Priority 3.5)
-- [ ] EXIF data extraction (Priority 3.8)
-- [ ] Sidecar JSON for unlimited metadata (Priority 3.9)
+- [x] EXIF data extraction from JPEG and RAW files (Priority 3.8)
+- [x] RAW file support (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+- [ ] Sidecar JSON for unlimited metadata (Priority 3.9) - Optional for MVP
 - [ ] Frontend upload UI
 - [ ] Frontend gallery with filtering
 - [ ] Azure AD authentication
