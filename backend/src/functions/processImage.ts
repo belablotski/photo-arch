@@ -116,13 +116,16 @@ app.storageBlob('process-image', {
         context.log(`No EXIF data found in image`);
       }
 
-      // Get image metadata
-      const imageMetadata = await getImageMetadata(blobBuffer);
-      context.log(`Image metadata: ${JSON.stringify(imageMetadata)}`);
-
-      // Generate thumbnail
+      // Generate thumbnail first (for RAW files, this extracts embedded JPEG)
       context.log(`Generating thumbnail (${thumbnailWidth}px width)...`);
-      const thumbnailBuffer = await generateThumbnail(blobBuffer, thumbnailWidth);
+      const thumbnailBuffer = await generateThumbnail(blobBuffer, thumbnailWidth, originalFilename, context);
+
+      // Get image metadata (use thumbnail for RAW files since Sharp can't read RAW directly)
+      const isRawFile = /\.(cr2|cr3|nef|arw|raf|orf|rw2|dng|pef)$/i.test(originalFilename);
+      const imageMetadata = isRawFile 
+        ? await getImageMetadata(thumbnailBuffer) 
+        : await getImageMetadata(blobBuffer);
+      context.log(`Image metadata: ${JSON.stringify(imageMetadata)}`);
 
       // Get blob clients
       const photosContainerClient = blobServiceClient.getContainerClient(photosContainer);
@@ -179,6 +182,10 @@ app.storageBlob('process-image', {
         },
       });
 
+      // Apply same blob tags to thumbnail for UI filtering
+      context.log(`Setting blob tags on thumbnail: ${JSON.stringify(blobTags)}`);
+      await thumbnailBlobClient.setTags(blobTags);
+
       // Delete from landing-zone after successful processing
       context.log(`Deleting from ${landingContainer}/${blobName}...`);
       const landingBlobClient = landingContainerClient.getBlockBlobClient(blobName);
@@ -210,9 +217,44 @@ async function getImageMetadata(imageBuffer: Buffer): Promise<ImageMetadata> {
 /**
  * Generate thumbnail using sharp
  * Maintains aspect ratio
+ * For RAW files, extracts embedded JPEG preview first
  */
-async function generateThumbnail(imageBuffer: Buffer, width: number): Promise<Buffer> {
-  return sharp(imageBuffer)
+async function generateThumbnail(imageBuffer: Buffer, width: number, filename?: string, context?: InvocationContext): Promise<Buffer> {
+  let sourceBuffer = imageBuffer;
+  
+  // Check if this is a RAW file by extension
+  const isRawFile = filename && /\.(cr2|cr3|nef|arw|raf|orf|rw2|dng|pef)$/i.test(filename);
+  
+  if (isRawFile) {
+    try {
+      // Try to extract embedded JPEG preview from RAW file using exifr
+      if (context) {
+        context.log(`Attempting to extract embedded preview from RAW file: ${filename}`);
+      }
+      
+      const embeddedJpeg = await exifr.thumbnail(imageBuffer);
+      if (embeddedJpeg && embeddedJpeg.byteLength > 0) {
+        sourceBuffer = Buffer.from(embeddedJpeg);
+        if (context) {
+          context.log(`✅ Extracted embedded JPEG preview (${embeddedJpeg.byteLength} bytes) from RAW file: ${filename}`);
+        }
+      } else {
+        throw new Error('No embedded preview found');
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      if (context) {
+        context.log(`⚠️ RAW preview extraction failed: ${errorMessage}`);
+        context.log(`⚠️ RAW file processing not supported - skipping thumbnail generation for: ${filename}`);
+      }
+      // For now, throw error - RAW files without embedded previews cannot be processed
+      // TODO: In future, could use external RAW processing library or skip RAW files gracefully
+      throw new Error(`Cannot generate thumbnail for RAW file ${filename}: ${errorMessage}. RAW files must have embedded JPEG previews.`);
+    }
+  }
+  
+  // Generate thumbnail from source buffer (either original JPEG or extracted preview)
+  return sharp(sourceBuffer)
     .resize(width, null, {
       withoutEnlargement: true, // Don't upscale small images
       fit: 'inside', // Maintain aspect ratio
@@ -227,6 +269,10 @@ async function generateThumbnail(imageBuffer: Buffer, width: number): Promise<Bu
 async function extractExifData(imageBuffer: Buffer): Promise<ExifData | null> {
   try {
     const exif = await exifr.parse(imageBuffer, {
+      // For RAW files, we need to enable more parsers
+      tiff: true,
+      exif: true,
+      gps: true,
       // Extract specific fields we need
       pick: [
         'Make', 'Model',
