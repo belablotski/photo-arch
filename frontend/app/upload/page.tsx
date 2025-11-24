@@ -193,7 +193,7 @@ export default function UploadPage() {
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                Upload Queue ({files.length} files)
+                Upload Queue ({files.length} {files.length === 1 ? 'file' : 'files'} / {formatFileSize(files.reduce((total, f) => total + f.file.size, 0))})
               </h2>
               <div className="flex gap-2">
                 <button
@@ -213,7 +213,7 @@ export default function UploadPage() {
             </div>
 
             <div className="space-y-2">
-              {files.map((uploadFile, index) => (
+              {files.map((file, index) => (
                 <div
                   key={index}
                   className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow"
@@ -221,21 +221,21 @@ export default function UploadPage() {
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="text-2xl">
-                        {uploadFile.status === "success" && "✅"}
-                        {uploadFile.status === "error" && "❌"}
-                        {uploadFile.status === "uploading" && "⏳"}
-                        {uploadFile.status === "pending" && "📄"}
+                        {file.status === "success" && "✅"}
+                        {file.status === "error" && "❌"}
+                        {file.status === "uploading" && "⏳"}
+                        {file.status === "pending" && "📄"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                          {uploadFile.file.name}
+                          {file.file.name}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {formatFileSize(uploadFile.file.size)}
+                          {formatFileSize(file.file.size)}
                         </p>
                       </div>
                     </div>
-                    {uploadFile.status === "pending" && (
+                    {file.status === "pending" && (
                       <button
                         onClick={() => uploadFile(index)}
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
@@ -246,19 +246,19 @@ export default function UploadPage() {
                   </div>
 
                   {/* Progress Bar */}
-                  {uploadFile.status === "uploading" && (
+                  {file.status === "uploading" && (
                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                       <div
                         className="bg-blue-600 h-2 rounded-full transition-all"
-                        style={{ width: `${uploadFile.progress}%` }}
+                        style={{ width: `${file.progress}%` }}
                       />
                     </div>
                   )}
 
                   {/* Error Message */}
-                  {uploadFile.status === "error" && (
+                  {file.status === "error" && (
                     <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                      {uploadFile.error}
+                      {file.error}
                     </p>
                   )}
                 </div>
