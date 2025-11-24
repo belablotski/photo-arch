@@ -75,7 +75,44 @@ backend/
      --output tsv
    ```
 
-4. Update `local.settings.json` with the connection string:
+4. **Configure CORS on Azure Storage** (required for browser uploads):
+   ```bash
+   # Replace with your storage account name
+   az storage cors add \
+     --account-name YOUR_STORAGE_ACCOUNT_NAME \
+     --services b \
+     --methods DELETE GET HEAD MERGE OPTIONS POST PUT PATCH \
+     --origins "http://localhost:3000" \
+     --allowed-headers "*" \
+     --exposed-headers "*" \
+     --max-age 3600
+   ```
+   
+   **Note:** This allows the frontend (localhost:3000) to upload directly to Azure Storage.
+   - For local development: Permissive settings for easier debugging
+   - For production: Restrict methods to `GET HEAD OPTIONS PUT`, specific headers, and your production domain
+   
+   **Production CORS (recommended):**
+   ```bash
+   az storage cors clear --account-name YOUR_STORAGE_ACCOUNT_NAME --services b
+   az storage cors add \
+     --account-name YOUR_STORAGE_ACCOUNT_NAME \
+     --services b \
+     --methods GET HEAD OPTIONS PUT \
+     --origins "https://your-production-domain.com" \
+     --allowed-headers "content-type,x-ms-blob-type,x-ms-version,x-ms-date" \
+     --exposed-headers "x-ms-request-id,ETag,Content-Length" \
+     --max-age 3600
+   ```
+   
+   **Verify CORS settings:**
+   ```bash
+   az storage account blob-service-properties show \
+     --account-name YOUR_STORAGE_ACCOUNT_NAME \
+     --query cors
+   ```
+
+5. Update `local.settings.json` with the connection string:
    ```json
    {
      "Values": {
