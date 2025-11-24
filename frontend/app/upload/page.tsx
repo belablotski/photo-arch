@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Link from "next/link";
 import { BlockBlobClient } from "@azure/storage-blob";
 
 interface UploadFile {
   file: File;
-  status: "pending" | "uploading" | "success" | "error";
+  status: "pending" | "uploading" | "success" | "error" | "cancelled";
   progress: number;
   error?: string;
+  abortController?: AbortController;
 }
 
 export default function UploadPage() {
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploadingAll, setIsUploadingAll] = useState(false);
+  const shouldCancelAllRef = useRef(false);
 
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
@@ -49,12 +52,13 @@ export default function UploadPage() {
 
   const uploadFile = async (index: number) => {
     const uploadFile = files[index];
+    const abortController = new AbortController();
     
     try {
-      // Update status to uploading
+      // Update status to uploading with abort controller
       setFiles((prev) =>
         prev.map((f, i) =>
-          i === index ? { ...f, status: "uploading" as const, progress: 0 } : f
+          i === index ? { ...f, status: "uploading" as const, progress: 0, abortController } : f
         )
       );
 
@@ -68,6 +72,7 @@ export default function UploadPage() {
           filename: uploadFile.file.name,
           contentType: uploadFile.file.type || "application/octet-stream",
         }),
+        signal: abortController.signal,
       });
 
       if (!tokenResponse.ok) {
@@ -80,6 +85,7 @@ export default function UploadPage() {
       const blobClient = new BlockBlobClient(uploadUrl);
       
       await blobClient.uploadData(uploadFile.file, {
+        abortSignal: abortController.signal,
         onProgress: (progress) => {
           const percent = Math.round((progress.loadedBytes / uploadFile.file.size) * 100);
           setFiles((prev) =>
@@ -93,31 +99,80 @@ export default function UploadPage() {
       // Success!
       setFiles((prev) =>
         prev.map((f, i) =>
-          i === index ? { ...f, status: "success" as const, progress: 100 } : f
+          i === index ? { ...f, status: "success" as const, progress: 100, abortController: undefined } : f
         )
       );
     } catch (error) {
-      console.error("Upload error:", error);
-      setFiles((prev) =>
-        prev.map((f, i) =>
-          i === index
-            ? {
-                ...f,
-                status: "error" as const,
-                error: error instanceof Error ? error.message : "Upload failed",
-              }
-            : f
-        )
-      );
+      // Check if it was cancelled
+      if (error instanceof Error && error.name === "AbortError") {
+        console.log("Upload cancelled");
+        setFiles((prev) =>
+          prev.map((f, i) =>
+            i === index ? { ...f, status: "cancelled" as const, abortController: undefined } : f
+          )
+        );
+      } else {
+        console.error("Upload error:", error);
+        setFiles((prev) =>
+          prev.map((f, i) =>
+            i === index
+              ? {
+                  ...f,
+                  status: "error" as const,
+                  error: error instanceof Error ? error.message : "Upload failed",
+                  abortController: undefined,
+                }
+              : f
+          )
+        );
+      }
     }
   };
 
   const uploadAll = async () => {
-    for (let i = 0; i < files.length; i++) {
-      if (files[i].status === "pending") {
-        await uploadFile(i);
+    setIsUploadingAll(true);
+    shouldCancelAllRef.current = false;
+    
+    // Create a snapshot of indices to upload
+    const indicesToUpload = files
+      .map((file, index) => (file.status === "pending" ? index : -1))
+      .filter(index => index !== -1);
+    
+    for (const i of indicesToUpload) {
+      // Check if cancel was requested
+      if (shouldCancelAllRef.current) {
+        console.log("Upload all cancelled by user");
+        break;
       }
+      
+      await uploadFile(i);
     }
+    
+    setIsUploadingAll(false);
+  };
+
+  const cancelUpload = (index: number) => {
+    const file = files[index];
+    if (file.abortController) {
+      file.abortController.abort();
+    }
+  };
+
+  const cancelAll = () => {
+    shouldCancelAllRef.current = true;
+    
+    // Abort currently uploading files and mark pending files as cancelled
+    setFiles((prev) =>
+      prev.map((file) => {
+        if (file.status === "uploading" && file.abortController) {
+          file.abortController.abort();
+        }
+        if (file.status === "pending" || file.status === "uploading") {
+          return { ...file, status: "cancelled" as const, abortController: undefined };
+        }
+        return file;
+      })
+    );
   };
 
   const clearCompleted = () => {
@@ -198,11 +253,19 @@ export default function UploadPage() {
               <div className="flex gap-2">
                 <button
                   onClick={uploadAll}
-                  disabled={files.every((f) => f.status !== "pending")}
+                  disabled={files.every((f) => f.status !== "pending") || isUploadingAll}
                   className="bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white px-4 py-2 rounded-lg transition-colors"
                 >
                   Upload All
                 </button>
+                {isUploadingAll && (
+                  <button
+                    onClick={cancelAll}
+                    className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Cancel All
+                  </button>
+                )}
                 <button
                   onClick={clearCompleted}
                   className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors"
@@ -225,6 +288,7 @@ export default function UploadPage() {
                         {file.status === "error" && "❌"}
                         {file.status === "uploading" && "⏳"}
                         {file.status === "pending" && "📄"}
+                        {file.status === "cancelled" && "🚫"}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -232,6 +296,7 @@ export default function UploadPage() {
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {formatFileSize(file.file.size)}
+                          {file.status === "cancelled" && " - Cancelled"}
                         </p>
                       </div>
                     </div>
@@ -241,6 +306,14 @@ export default function UploadPage() {
                         className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
                       >
                         Upload
+                      </button>
+                    )}
+                    {file.status === "uploading" && (
+                      <button
+                        onClick={() => cancelUpload(index)}
+                        className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-sm"
+                      >
+                        Cancel
                       </button>
                     )}
                   </div>
