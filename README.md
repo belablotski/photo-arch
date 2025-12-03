@@ -29,8 +29,12 @@ Photo Archive is a serverless application that enables users to:
 ## ✨ Features
 
 - **Direct Upload**: Client-side uploads using SAS tokens (no server bottleneck)
-- **Automated Processing**: Event-driven thumbnail generation and AI analysis
+- **Metadata Tagging**: Add author, location, and custom tags (max 3) during upload for searchable organization
+- **Automated Processing**: Event-driven thumbnail generation and EXIF extraction
+- **RAW File Support**: Full support for CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF formats
+- **Content-Hash Naming**: Automatic deduplication and collision-free filenames using SHA-256 hashing
 - **Smart Storage**: Lifecycle policies automatically move photos to cheaper tiers
+- **Searchable Tags**: 10 blob index tags for fast filtering (author, date, camera, lens, location, rating, 3 custom tags, favorite)
 - **Secure**: Azure AD authentication with fine-grained access control
 - **Cost-Effective**: Pay-per-use serverless architecture
 - **Scalable**: Cloud-native design handles growth automatically
@@ -209,13 +213,55 @@ photo-arch/
 └── README.md                # This file
 ```
 
-## 📚 Documentation
+## � Using the Application
+
+### Upload Photos with Metadata
+
+1. **Navigate to Upload Page**: Go to http://localhost:3000/upload
+2. **Add Metadata (Optional)**:
+   - **Author/Photographer**: Your name or camera owner (e.g., "John Doe")
+   - **Location**: Where photos were taken (e.g., "Yosemite National Park")
+   - **Custom Tags**: Up to 3 searchable tags (e.g., "vacation", "hiking", "nature")
+     - Tags can contain any characters (spaces, commas, etc.)
+     - Press Enter or click "Add Tag" to add each tag
+     - Tags are automatically applied when you upload
+3. **Select Photos**: 
+   - Drag and drop images, or click "Select Files"
+   - Supports JPEG, PNG, and RAW files (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+4. **Upload**: 
+   - Click individual "Upload" buttons or "Upload All"
+   - Metadata is automatically captured at upload time
+   - Progress bars show upload status
+   - Cancel individual uploads or "Cancel All"
+
+### Metadata Priority
+
+When processing photos, the system uses this priority:
+1. **User-provided metadata** (from upload form) - Highest priority
+2. **EXIF data** (from photo file) - Extracted automatically
+3. **Defaults** - Used if neither above is available
+
+### Searchable Blob Index Tags
+
+Each photo gets 10 searchable tags for fast filtering:
+- `author` - From form or EXIF artist field
+- `dateTaken` - From EXIF or upload date (YYYY-MM-DD)
+- `camera` - From EXIF (e.g., "Canon-5D-Mark-IV")
+- `lens` - From EXIF (e.g., "50mm-f1.4")
+- `location` - From form or EXIF GPS (e.g., "san-francisco-ca")
+- `rating` - Default "0" (future: user ratings)
+- `customTag1`, `customTag2`, `customTag3` - From form (formatted: lowercase, spaces→dashes)
+- `favorite` - Default "false" (future: user favorites)
+
+## �📚 Documentation
 
 - [PRODUCT_DOCUMENT.md](./PRODUCT_DOCUMENT.md) - Product vision and requirements
 - [DESIGN.md](./DESIGN.md) - Technical architecture and design decisions
+- [Backend README](./backend/README.md) - Backend setup and API documentation
+- [Frontend README](./frontend/README.md) - Frontend setup and development guide
+- [Copilot Instructions](./.github/copilot-instructions.md) - Development guidelines for Azure Functions v4
 - [Infrastructure Setup](./docs/infrastructure-setup.md) - Detailed infrastructure guide *(coming soon)*
 - [API Documentation](./docs/api.md) - Backend API reference *(coming soon)*
-- [Frontend Guide](./docs/frontend.md) - Frontend development guide *(coming soon)*
 
 ## 🛠️ Development Workflow
 

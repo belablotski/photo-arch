@@ -297,32 +297,85 @@ backend/test-upload-with-hash.sh  ✅ End-to-end test with deduplication
 - ✅ Hash-based naming in archive storage
 - ✅ Tested end-to-end
 
-**Next:** Priority 3.8 (EXIF Extraction) - Future enhancement
+**Next:** Priority 3.8 (EXIF Extraction) ✅ COMPLETED
 
 ---
 
-## Phase 2: Frontend Development (After Backend Core)
+### 🔥 **PRIORITY 4: Frontend Upload UI** ✅ COMPLETED
 
-This section was previously "Filename Collision Prevention (Priority 3.5)" and has been moved up as completed.
+**Status:** ✅ Implemented and tested (December 2, 2025)
 
-### Step 4: React SPA Setup
-- Initialize React project
-- Set up routing
-- Configure Azure AD authentication (placeholder for now)
+**Implementation:**
+```
+frontend/
+├── app/
+│   ├── page.tsx           # Homepage with feature cards ✅
+│   ├── layout.tsx         # Root layout ✅
+│   └── upload/
+│       └── page.tsx       # Upload interface with metadata tagging ✅
+├── .env.local             # Backend API URL (gitignored) ✅
+├── .env.local.example     # Template for users ✅
+├── package.json           # Dependencies including @azure/storage-blob ✅
+└── README.md              # Setup instructions ✅
+```
 
-### Step 5: Upload Interface
-- File upload component with drag-and-drop
-- Request SAS token from backend
-- Direct-to-blob upload with progress tracking
-- Success/error feedback
+**Completed Features:**
+- ✅ Next.js 16 with App Router and TypeScript
+- ✅ Drag-and-drop file selection
+- ✅ File validation (JPEG, PNG, RAW formats: CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+- ✅ **Metadata tagging form:**
+  - Author/Photographer field
+  - Location field  
+  - Custom tags (max 3, any characters allowed)
+  - Automatic application on upload (no manual "Apply" button)
+- ✅ SAS token request from backend
+- ✅ Direct-to-Azure upload with `BlockBlobClient`
+- ✅ Progress tracking per file
+- ✅ Individual "Upload" buttons and "Upload All"
+- ✅ Cancel individual uploads and "Cancel All"
+- ✅ Upload queue with status indicators (pending/uploading/success/error/cancelled)
+- ✅ File size display (individual and total)
+- ✅ Error handling with user-friendly messages
+- ✅ CORS configured (backend API + Azure Storage)
+- ✅ Metadata stored in blob metadata (customTag1/2/3 as separate fields)
+- ✅ Backend reads metadata and creates searchable blob index tags
 
-### Step 6: Photo Gallery
-- Responsive grid layout
-- Infinite scroll or pagination
-- Photo lightbox view
-- Display metadata
+**Metadata Workflow:**
+1. User enters metadata (author, location, up to 3 custom tags)
+2. User selects photos (drag-and-drop or file picker)
+3. User clicks "Upload" or "Upload All"
+4. Frontend captures current metadata and attaches to blob upload
+5. Backend reads blob metadata from landing-zone
+6. Backend formats and creates blob index tags:
+   - User metadata > EXIF data > defaults (priority order)
+   - Text formatted: lowercase, spaces→dashes (e.g., "San Francisco" → "san-francisco")
+   - Custom tags: stored in `customTag1`, `customTag2`, `customTag3`
 
-**Estimated Time:** 1-2 weeks
+**Blob Index Tags Created:**
+- `author` - From form or EXIF artist
+- `dateTaken` - From EXIF or upload date (YYYY-MM-DD)
+- `camera` - From EXIF (formatted: "Canon-5D-Mark-IV")
+- `lens` - From EXIF (formatted: "50mm-f1.4")
+- `location` - From form or EXIF GPS (formatted: "san-francisco-ca")
+- `rating` - Default "0"
+- `customTag1/2/3` - From form (formatted: lowercase, dashes)
+- `favorite` - Default "false"
+
+**Security:**
+- ✅ No connection strings in frontend code
+- ✅ SAS tokens with 5-minute expiration and write-only permissions
+- ✅ Storage account name is public (part of URL), account key secure
+
+**Test Results:**
+- ✅ JPEG uploads with metadata working
+- ✅ RAW file uploads working (backend processes with exiftool)
+- ✅ Progress bars update correctly
+- ✅ Success/error/cancelled states display properly
+- ✅ CORS configured for both backend API and Azure Storage
+- ✅ Metadata tags appear in landing-zone blobs
+- ✅ Backend creates searchable blob index tags from metadata
+
+**Next:** Priority 5 (Frontend Gallery) ← **YOU ARE HERE**
 
 ---
 
@@ -961,13 +1014,13 @@ const filtered = metadata.filter(m =>
    ↓
 [DONE] SAS Token Generation ✅
    ↓
-[NEXT] Image Processing Function ← YOU ARE HERE
+[DONE] Image Processing Function ✅
    ↓
-Photo Retrieval API
+[DONE] Photo Retrieval API ✅
    ↓
-Frontend Upload UI
+[DONE] Frontend Upload UI ✅
    ↓
-Frontend Gallery
+[NEXT] Frontend Gallery ← YOU ARE HERE
    ↓
 MVP COMPLETE ✨
 ```
@@ -999,44 +1052,71 @@ MVP COMPLETE ✨
 
 ## Next Action Items
 
-**Immediate (This Week):**
+**Completed:**
 1. ✅ Create Azure Functions project structure
 2. ✅ Implement SAS Token Generation function
 3. ✅ Test locally with curl
-4. ✅ Implement Image Processing function
+4. ✅ Implement Image Processing function with EXIF extraction
 5. ✅ Test end-to-end upload workflow
+6. ✅ Implement Photo Retrieval API
+7. ✅ Test gallery listing functionality
+8. ✅ Frontend upload UI with metadata tagging
+9. ✅ RAW file support (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+10. ✅ Content-hash naming with deduplication
 
-**Short Term (Next Week):**
-1. Implement Photo Retrieval API ← **YOU ARE HERE**
-2. Test gallery listing functionality
-3. Basic frontend upload UI
+**Immediate (Current Focus):**
+1. **Frontend Gallery Page** ← **YOU ARE HERE**
+   - Create `frontend/app/gallery/page.tsx`
+   - Fetch photos from `GET /api/photos` endpoint
+   - Display thumbnails in responsive grid
+   - Show photo metadata (camera, lens, date, settings)
+   - Handle pagination or infinite scroll
+   - Request SAS URLs for thumbnail access
+   - Click to view full-size (prepare for lightbox modal)
+   
+2. **Photo Lightbox/Modal**
+   - Click thumbnail to view full-size photo
+   - Display full EXIF metadata
+   - Navigation between photos (prev/next)
+   - Close button and ESC key support
+
+**Short Term (Next 1-2 Weeks):**
+1. Add filtering UI (by camera, date range, lens, custom tags)
+2. Test gallery with real uploaded photos
+3. Add loading states and error handling
 4. Deploy backend to Azure (optional)
 
 **Medium Term (Next 2-3 Weeks):**
-1. Complete photo gallery UI
-2. Add authentication
-3. Deploy frontend to $web container
-4. End-to-end testing
+1. Deploy frontend to Azure Static Web Apps or App Service
+2. Add authentication (Azure AD B2C)
+3. User-specific photo access
+4. End-to-end testing in production
 
 ---
 
-## Questions to Resolve
+## Questions Resolved
 
 1. **Authentication**: Azure AD, custom auth, or start with API keys?
-   - *Recommendation*: Start with simple bearer tokens, migrate to Azure AD later
+   - ✅ *Decided*: Manual author field for MVP, add Azure AD post-MVP
 
 2. **Image formats**: Support RAW photos (CR2, NEF, etc.)?
-   - *Recommendation*: Start with JPEG/PNG, add RAW support later
+   - ✅ *Implemented*: Full RAW support with exiftool-vendored
 
 3. **Max upload size**: 50MB limit enough?
-   - *Recommendation*: 50MB good for JPEG, increase for RAW
+   - ✅ *Current*: 50MB is good for JPEG, RAW files work fine
 
 4. **Thumbnail size**: 300px width sufficient?
-   - *Recommendation*: Generate multiple sizes (150px, 300px, 600px)
+   - ✅ *Current*: 300px width, can add multiple sizes later
+
+5. **Metadata tagging**: How to handle user-provided tags?
+   - ✅ *Implemented*: Author, location, 3 custom tags via upload form
+
+6. **Tag storage**: Comma-separated or separate fields?
+   - ✅ *Decided*: Separate fields (customTag1/2/3) matching blob index tags
 
 ---
 
-**Last Updated:** November 1, 2025  
-**Status:** Phase 2 (Priority 1 & 2) Complete ✅  
-**Next Milestone:** Photo Retrieval API (Priority 3)  
-**Git Status:** Ready to commit Priority 2 changes
+**Last Updated:** December 2, 2025  
+**Status:** Frontend Upload Complete ✅  
+**Next Milestone:** Frontend Gallery (Priority 5)  
+**Git Status:** Ready to commit frontend metadata tagging feature
