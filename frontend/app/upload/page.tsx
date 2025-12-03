@@ -4,12 +4,19 @@ import { useState, useRef } from "react";
 import Link from "next/link";
 import { BlockBlobClient } from "@azure/storage-blob";
 
+interface PhotoMetadata {
+  author?: string;
+  location?: string;
+  customTags?: string[]; // Array of custom tags
+}
+
 interface UploadFile {
   file: File;
   status: "pending" | "uploading" | "success" | "error" | "cancelled";
   progress: number;
   error?: string;
   abortController?: AbortController;
+  metadata?: PhotoMetadata;
 }
 
 export default function UploadPage() {
@@ -17,6 +24,14 @@ export default function UploadPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploadingAll, setIsUploadingAll] = useState(false);
   const shouldCancelAllRef = useRef(false);
+  
+  // Global metadata that applies to all files in the current batch
+  const [globalMetadata, setGlobalMetadata] = useState<PhotoMetadata>({
+    author: "",
+    location: "",
+    customTags: []
+  });
+  const [newTagInput, setNewTagInput] = useState("");
 
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
@@ -30,6 +45,7 @@ export default function UploadPage() {
       file,
       status: "pending",
       progress: 0,
+      metadata: { ...globalMetadata } // Copy global metadata to each file
     }));
 
     setFiles((prev) => [...prev, ...newFiles]);
@@ -54,11 +70,16 @@ export default function UploadPage() {
     const uploadFile = files[index];
     const abortController = new AbortController();
     
+    // Apply current global metadata to this file before uploading
+    const metadataToUpload = { ...globalMetadata };
+    
     try {
-      // Update status to uploading with abort controller
+      // Update status to uploading with abort controller and current metadata
       setFiles((prev) =>
         prev.map((f, i) =>
-          i === index ? { ...f, status: "uploading" as const, progress: 0, abortController } : f
+          i === index 
+            ? { ...f, status: "uploading" as const, progress: 0, abortController, metadata: metadataToUpload } 
+            : f
         )
       );
 
@@ -81,11 +102,24 @@ export default function UploadPage() {
 
       const { uploadUrl } = await tokenResponse.json();
 
-      // Step 2: Upload directly to Azure Blob Storage
+      // Step 2: Upload directly to Azure Blob Storage with metadata
       const blobClient = new BlockBlobClient(uploadUrl);
+      
+      // Prepare blob metadata from current global metadata (only non-empty values)
+      const blobMetadata: Record<string, string> = {};
+      if (metadataToUpload.author) {
+        blobMetadata.author = metadataToUpload.author;
+      }
+      if (metadataToUpload.location) {
+        blobMetadata.location = metadataToUpload.location;
+      }
+      if (metadataToUpload.customTags && metadataToUpload.customTags.length > 0) {
+        blobMetadata.customTags = metadataToUpload.customTags.join(',');
+      }
       
       await blobClient.uploadData(uploadFile.file, {
         abortSignal: abortController.signal,
+        metadata: blobMetadata,
         onProgress: (progress) => {
           const percent = Math.round((progress.loadedBytes / uploadFile.file.size) * 100);
           setFiles((prev) =>
@@ -185,6 +219,31 @@ export default function UploadPage() {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
+  const addCustomTag = () => {
+    const tag = newTagInput.trim();
+    const currentTags = globalMetadata.customTags || [];
+    
+    // Limit to 3 custom tags (matches blob index tag limit)
+    if (currentTags.length >= 3) {
+      return; // Don't add more than 3 tags
+    }
+    
+    if (tag && !currentTags.includes(tag)) {
+      setGlobalMetadata(prev => ({
+        ...prev,
+        customTags: [...(prev.customTags || []), tag]
+      }));
+      setNewTagInput("");
+    }
+  };
+
+  const removeCustomTag = (tagToRemove: string) => {
+    setGlobalMetadata(prev => ({
+      ...prev,
+      customTags: prev.customTags?.filter(tag => tag !== tagToRemove) || []
+    }));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Header */}
@@ -241,6 +300,114 @@ export default function UploadPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
             Supports JPEG, PNG, and RAW files (CR3, CR2, NEF, ARW, etc.)
           </p>
+        </div>
+
+        {/* Metadata Form */}
+        <div className="mt-8 bg-white dark:bg-gray-800 rounded-lg p-6 shadow">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+            Photo Metadata (Optional)
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+            This metadata will be automatically applied when you upload photos. Especially useful for fields missing in EXIF data.
+          </p>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Author Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Author / Photographer
+              </label>
+              <input
+                type="text"
+                value={globalMetadata.author || ""}
+                onChange={(e) => setGlobalMetadata(prev => ({ ...prev, author: e.target.value }))}
+                placeholder="e.g., John Doe"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Location Field */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Location
+              </label>
+              <input
+                type="text"
+                value={globalMetadata.location || ""}
+                onChange={(e) => setGlobalMetadata(prev => ({ ...prev, location: e.target.value }))}
+                placeholder="e.g., San Francisco, CA"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          {/* Custom Tags */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Custom Tags (Max 3)
+            </label>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+              Add up to 3 searchable custom tags. These will be indexed for fast filtering in the gallery.
+            </p>
+            <div className="flex gap-2 mb-2">
+              <input
+                type="text"
+                value={newTagInput}
+                onChange={(e) => setNewTagInput(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addCustomTag())}
+                placeholder={
+                  (globalMetadata.customTags?.length || 0) >= 3 
+                    ? "Maximum 3 tags reached" 
+                    : "e.g., vacation, family, beach"
+                }
+                disabled={(globalMetadata.customTags?.length || 0) >= 3}
+                className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 dark:disabled:bg-gray-800 disabled:cursor-not-allowed"
+              />
+              <button
+                onClick={addCustomTag}
+                disabled={(globalMetadata.customTags?.length || 0) >= 3}
+                className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors"
+              >
+                Add Tag
+              </button>
+            </div>
+            
+            {/* Display Tags */}
+            <div className="flex items-center justify-between">
+              <div className="flex flex-wrap gap-2 flex-1">
+                {globalMetadata.customTags && globalMetadata.customTags.length > 0 ? (
+                  globalMetadata.customTags.map((tag, index) => (
+                    <span
+                      key={index}
+                      className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-3 py-1 rounded-full text-sm"
+                    >
+                      {tag}
+                      <button
+                        onClick={() => removeCustomTag(tag)}
+                        className="hover:text-blue-600 dark:hover:text-blue-400"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">No tags added yet</p>
+                )}
+              </div>
+              {globalMetadata.customTags && globalMetadata.customTags.length > 0 && (
+                <span className="text-sm text-gray-500 dark:text-gray-400 ml-4">
+                  {globalMetadata.customTags.length}/3
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Info message */}
+          {files.length > 0 && (
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              ℹ️ Metadata will be automatically applied to photos when you upload them.
+            </p>
+          )}
         </div>
 
         {/* Upload Queue */}

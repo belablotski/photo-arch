@@ -139,6 +139,17 @@ app.storageBlob('process-image', {
       const thumbnailsContainerClient = blobServiceClient.getContainerClient(thumbnailsContainer);
       const landingContainerClient = blobServiceClient.getContainerClient(landingContainer);
 
+      // Read metadata from landing-zone blob (uploaded by frontend)
+      const tempLandingBlobClient = landingContainerClient.getBlockBlobClient(blobName);
+      const blobProperties = await tempLandingBlobClient.getProperties();
+      const uploadedMetadata = blobProperties.metadata || {};
+      context.log(`Uploaded metadata: ${JSON.stringify(uploadedMetadata)}`);
+      
+      // Parse custom tags from comma-separated string
+      const customTagsFromUpload = uploadedMetadata.customTags 
+        ? uploadedMetadata.customTags.split(',').map((t: string) => t.trim()).filter(Boolean)
+        : [];
+
       // Check if photo already exists (deduplication)
       const photoBlobClient = photosContainerClient.getBlockBlobClient(permanentBlobName);
       const photoExists = await photoBlobClient.exists();
@@ -180,8 +191,13 @@ app.storageBlob('process-image', {
         },
       });
 
-      // Create blob tags from EXIF data
-      const blobTags: Record<string, string> = createBlobTags(exifData, "default-user"); // TODO: Get from authentication
+      // Create blob tags from EXIF data and uploaded metadata
+      const blobTags: Record<string, string> = createBlobTags(
+        exifData, 
+        uploadedMetadata.author || "default-user", // Use uploaded author or default
+        uploadedMetadata.location, // Use uploaded location
+        customTagsFromUpload // Use uploaded custom tags
+      );
       context.log(`Setting blob tags: ${JSON.stringify(blobTags)}`);
       await photoBlobClient.setTags(blobTags);
 
@@ -513,19 +529,41 @@ function formatLocation(latitude?: number, longitude?: number): string {
 }
 
 /**
- * Create blob tags from EXIF data
+ * Format user-provided text for blob tag (spaces to dashes, lowercase, max 256 chars)
+ * Used for location and custom tags from frontend
  */
-function createBlobTags(exif: ExifData | null, author: string = 'default-user'): BlobTags {
+function formatUserText(text?: string): string {
+  if (!text) return '';
+  
+  // Convert spaces to dashes, lowercase, and limit length
+  return text.trim().replace(/\s+/g, '-').toLowerCase().substring(0, 256);
+}
+
+/**
+ * Create blob tags from EXIF data and uploaded metadata
+ * Priority: Uploaded metadata > EXIF data > defaults
+ */
+function createBlobTags(
+  exif: ExifData | null, 
+  author: string = 'default-user',
+  uploadedLocation?: string,
+  customTags: string[] = []
+): BlobTags {
+  // Use uploaded location if provided (formatted), otherwise extract from EXIF GPS
+  const location = uploadedLocation 
+    ? formatUserText(uploadedLocation) 
+    : formatLocation(exif?.latitude, exif?.longitude);
+  
   return {
-    author: author,
+    author: formatUserText(author) || 'default-user',
     dateTaken: formatDateTaken(exif?.dateTimeOriginal),
     camera: formatCameraName(exif?.make, exif?.model),
     lens: formatLensName(exif?.lensModel),
-    location: formatLocation(exif?.latitude, exif?.longitude),
+    location: location,
     rating: '0',
-    customTag1: '',
-    customTag2: '',
-    customTag3: '',
+    customTag1: formatUserText(customTags[0]),
+    customTag2: formatUserText(customTags[1]),
+    customTag3: formatUserText(customTags[2]),
     favorite: 'false'
   };
 }

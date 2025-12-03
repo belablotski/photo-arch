@@ -6,6 +6,9 @@ local.settings.json
 .env.local
 .env.*.local
 
+# Azure Functions local secrets
+azure-webjobs-secrets/
+
 # Logs
 logs
 *.log
