@@ -51,9 +51,11 @@ interface BlobTags {
 
 /**
  * Process uploaded images from landing-zone container
- * - Generate thumbnail
+ * - Generate thumbnail (300px)
+ * - Generate preview (1920px Full HD for slideshow)
  * - Copy original to photos container with content-hash name
  * - Copy thumbnail to thumbnails container
+ * - Copy preview to previews container
  * - Delete from landing-zone after success
  * - Skip duplicates (deduplication via content hash)
  * 
@@ -89,8 +91,10 @@ app.storageBlob('process-image', {
       const connectionString = process.env.StorageConnectionString;
       const photosContainer = process.env.PHOTOS_CONTAINER;
       const thumbnailsContainer = process.env.THUMBNAILS_CONTAINER;
+      const previewsContainer = process.env.PREVIEWS_CONTAINER;
       const landingContainer = process.env.LANDING_ZONE_CONTAINER;
       const thumbnailWidth = process.env.THUMBNAIL_WIDTH ? parseInt(process.env.THUMBNAIL_WIDTH, 10) : undefined;
+      const previewWidth = process.env.PREVIEW_WIDTH ? parseInt(process.env.PREVIEW_WIDTH, 10) : undefined;
 
       // Validate all required configuration
       if (!connectionString) {
@@ -102,14 +106,20 @@ app.storageBlob('process-image', {
       if (!thumbnailsContainer) {
         throw new Error('THUMBNAILS_CONTAINER not configured');
       }
+      if (!previewsContainer) {
+        throw new Error('PREVIEWS_CONTAINER not configured');
+      }
       if (!landingContainer) {
         throw new Error('LANDING_ZONE_CONTAINER not configured');
       }
       if (!thumbnailWidth) {
         throw new Error('THUMBNAIL_WIDTH not configured');
       }
+      if (!previewWidth) {
+        throw new Error('PREVIEW_WIDTH not configured');
+      }
 
-      context.log(`Configuration loaded: photos=${photosContainer}, thumbnails=${thumbnailsContainer}, thumbnailWidth=${thumbnailWidth}px`);
+      context.log(`Configuration loaded: photos=${photosContainer}, thumbnails=${thumbnailsContainer}, previews=${previewsContainer}, thumbnailWidth=${thumbnailWidth}px, previewWidth=${previewWidth}px`);
 
       // Create blob service client
       const blobServiceClient = BlobServiceClient.fromConnectionString(connectionString);
@@ -127,6 +137,10 @@ app.storageBlob('process-image', {
       context.log(`Generating thumbnail (${thumbnailWidth}px width)...`);
       const thumbnailBuffer = await generateThumbnail(blobBuffer, thumbnailWidth, originalFilename, context);
 
+      // Generate preview (Full HD for slideshow/lightbox)
+      context.log(`Generating preview (${previewWidth}px width)...`);
+      const previewBuffer = await generateThumbnail(blobBuffer, previewWidth, originalFilename, context);
+
       // Get image metadata (use thumbnail for RAW files since Sharp can't read RAW directly)
       const isRawFile = /\.(cr2|cr3|nef|arw|raf|orf|rw2|dng|pef)$/i.test(originalFilename);
       const imageMetadata = isRawFile 
@@ -137,6 +151,7 @@ app.storageBlob('process-image', {
       // Get blob clients
       const photosContainerClient = blobServiceClient.getContainerClient(photosContainer);
       const thumbnailsContainerClient = blobServiceClient.getContainerClient(thumbnailsContainer);
+      const previewsContainerClient = blobServiceClient.getContainerClient(previewsContainer);
       const landingContainerClient = blobServiceClient.getContainerClient(landingContainer);
 
       // Read metadata from landing-zone blob (uploaded by frontend)
@@ -234,6 +249,38 @@ app.storageBlob('process-image', {
       // Apply same blob tags to thumbnail for UI filtering
       context.log(`Setting blob tags on thumbnail: ${JSON.stringify(blobTags)}`);
       await thumbnailBlobClient.setTags(blobTags);
+
+      // Upload preview (Full HD) to previews container with .jpg extension
+      const previewBlobName = `${nameWithoutExt}_${hashPrefix}.jpg`;
+      context.log(`Copying preview to ${previewsContainer}/${previewBlobName}...`);
+      const previewBlobClient = previewsContainerClient.getBlockBlobClient(previewBlobName);
+      
+      // Get preview dimensions for metadata
+      const previewMetadata = await getImageMetadata(previewBuffer);
+      
+      await previewBlobClient.uploadData(previewBuffer, {
+        metadata: {
+          originalFilename: originalFilename,  // Store original camera filename
+          uploadDate: new Date().toISOString(),
+          width: previewMetadata.width.toString(),
+          height: previewMetadata.height.toString(),
+          format: previewMetadata.format,
+          // Add EXIF metadata (same as main photo)
+          ...(exifData?.iso && { iso: exifData.iso.toString() }),
+          ...(exifData?.fNumber && { aperture: `f/${exifData.fNumber}` }),
+          ...(exifData?.exposureTime && { shutterSpeed: `1/${Math.round(1 / exifData.exposureTime)}` }),
+          ...(exifData?.focalLength && { focalLength: `${exifData.focalLength}mm` }),
+          ...(exifData?.artist && { artist: exifData.artist }),
+          ...(exifData?.copyright && { copyright: exifData.copyright }),
+          // Link to original photo for reference
+          originalPhotoWidth: actualWidth.toString(),
+          originalPhotoHeight: actualHeight.toString()
+        },
+      });
+
+      // Apply same blob tags to preview for UI filtering
+      context.log(`Setting blob tags on preview: ${JSON.stringify(blobTags)}`);
+      await previewBlobClient.setTags(blobTags);
 
       // Delete from landing-zone after successful processing
       context.log(`Deleting from ${landingContainer}/${blobName}...`);

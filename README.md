@@ -2,7 +2,37 @@
 
 An open-source, cloud-native photo archiving solution built on Azure, providing cost-effective long-term storage with intelligent image processing and search capabilities.
 
-**Note:** This is under development and not ready for use! But you're welcome to fork it or to contribute.
+**Note:** This is under development and not ready for use! But you## 🖼️ Three-Tier Image Storage
+
+The system automatically generates three versions of each uploaded photo:
+
+| Tier | Resolution | Size | Container | Use Case |
+|------|-----------|------|-----------|----------|
+| **Thumbnail** | 300px width | ~10-50 KB | `thumbnails` | Gallery grid view (fast loading) |
+| **Preview** | 1920px width | ~200-500 KB | `previews` | Lightbox/slideshow (Full HD quality) |
+| **Original** | Full resolution | 2-20 MB | `photos` | Download only (archive) |
+
+**Benefits:**
+- ✅ **Fast Gallery Loading**: Tiny thumbnails load instantly in grid view
+- ✅ **High-Quality Viewing**: Full HD previews look great on modern displays
+- ✅ **Universal Browser Support**: All versions are JPEG (RAW files converted automatically)
+- ✅ **Bandwidth Efficient**: Load only what's needed for each view
+- ✅ **Automatic Processing**: All versions generated server-side on upload
+
+**Example for 5000 photos:**
+- Thumbnails: ~250 MB total
+- Previews: ~1.5 GB total
+- Originals: ~50 GB total
+
+## 📚 Documentation
+
+- [PRODUCT_DOCUMENT.md](./PRODUCT_DOCUMENT.md) - Product vision and requirements
+- [DESIGN.md](./DESIGN.md) - Technical architecture and design decisions
+- [Backend README](./backend/README.md) - Backend setup and API documentation
+- [Frontend README](./frontend/README.md) - Frontend setup and development guide
+- [Copilot Instructions](./.github/copilot-instructions.md) - Development guidelines for Azure Functions v4
+- [Infrastructure Setup](./docs/infrastructure-setup.md) - Detailed infrastructure guide *(coming soon)*
+- [API Documentation](./docs/api.md) - Backend API reference *(coming soon)*me to fork it or to contribute.
 
 ## 📋 Table of Contents
 
@@ -30,7 +60,8 @@ Photo Archive is a serverless application that enables users to:
 
 - **Direct Upload**: Client-side uploads using SAS tokens (no server bottleneck)
 - **Metadata Tagging**: Add author, location, and custom tags (max 3) during upload for searchable organization
-- **Automated Processing**: Event-driven thumbnail generation and EXIF extraction
+- **Three-Tier Image Storage**: Automatic generation of thumbnail (300px), preview (1920px Full HD), and original versions
+- **Automated Processing**: Event-driven image processing and EXIF extraction
 - **RAW File Support**: Full support for CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF formats
 - **Content-Hash Naming**: Automatic deduplication and collision-free filenames using SHA-256 hashing
 - **Smart Storage**: Lifecycle policies automatically move photos to cheaper tiers

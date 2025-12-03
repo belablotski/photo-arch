@@ -80,11 +80,17 @@ app.http('get-photos', {
           // Extract filename from blob name (flat structure now)
           const filename = blob.name;
 
-          // Generate SAS URLs for thumbnail and photo (1 hour expiration)
+          // Generate SAS URLs for thumbnail, preview, and photo (1 hour expiration)
           const thumbnailUrl = await generateReadSasUrl(
             connectionString,
             "thumbnails",
             filename, // Flat structure - thumbnails/{name}_{hash}.jpg
+            60 // 1 hour
+          );
+          const previewUrl = await generateReadSasUrl(
+            connectionString,
+            "previews",
+            filename, // Flat structure - previews/{name}_{hash}.jpg
             60 // 1 hour
           );
           const photoUrl = await generateReadSasUrl(
@@ -98,6 +104,7 @@ app.http('get-photos', {
             id: filename,
             originalFilename: blob.metadata?.originalFilename || filename,
             thumbnailUrl,
+            previewUrl,
             photoUrl,
             uploadDate: blob.properties.createdOn?.toISOString(),
             size: blob.properties.contentLength,

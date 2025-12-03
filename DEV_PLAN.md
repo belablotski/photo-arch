@@ -646,6 +646,66 @@ await blobClient.setTags({
 - ✅ Thumbnails always in JPEG format
 - ✅ Full metadata on both photos and thumbnails
 
+---
+
+### Three-Tier Image Storage (Priority 3.85) ✅ COMPLETED
+
+**Status:** ✅ Implemented and tested successfully (Dec 3, 2025)
+
+**Why Important:**
+- Thumbnail (300px): Fast gallery grid loading
+- Preview (1920px Full HD): High-quality slideshow/lightbox viewing
+- Original: Archive/download with full resolution
+- Universal browser support (RAW → JPEG conversion)
+- Bandwidth efficiency (only load what's needed)
+
+**Implementation:**
+- ✅ Added `PREVIEWS_CONTAINER` and `PREVIEW_WIDTH` environment variables
+- ✅ Generate 1920px preview using Sharp (or exiftool for RAW)
+- ✅ Upload preview to `previews` container with same content-hash naming
+- ✅ Apply same blob tags and metadata to previews
+- ✅ Updated `getPhotos.ts` to return `previewUrl` field
+- ✅ Created `previews` container in Azure Storage
+
+**Storage Tiers:**
+| Tier | Resolution | Size | Container | Use Case |
+|------|-----------|------|-----------|----------|
+| Thumbnail | 300px width | ~10-50 KB | `thumbnails` | Gallery grid |
+| Preview | 1920px width | ~200-500 KB | `previews` | Lightbox/slideshow |
+| Original | Full resolution | 2-20 MB | `photos` | Download/archive |
+
+**Test Results:**
+```bash
+# Test photo: PXL_20251018_230634086.jpg (4032x2268 JPEG)
+✅ Thumbnail: 300x168, 13 KB
+✅ Preview: 1920x1080, 450 KB (Full HD)
+✅ Original: 4032x2268, 2.8 MB
+✅ All three versions created with same hash: d1cf8277
+✅ API returns thumbnailUrl, previewUrl, photoUrl
+```
+
+**Benefits:**
+- ✅ Fast gallery loading (tiny thumbnails)
+- ✅ High-quality viewing (Full HD previews)
+- ✅ Universal browser support (all JPEG)
+- ✅ Bandwidth efficient (load what's needed)
+- ✅ Automatic processing (server-side)
+
+**Storage Estimate for 5000 photos:**
+- Thumbnails: ~250 MB
+- Previews: ~1.5 GB
+- Originals: ~50 GB
+- **Total: ~52 GB** (extra 1.5 GB well worth the UX improvement)
+
+**Acceptance Criteria:**
+- ✅ Preview generation working (1920px width)
+- ✅ Preview container created and configured
+- ✅ API returns previewUrl field
+- ✅ Same naming convention (content-hash postfix)
+- ✅ Same metadata and tags on all three versions
+- ✅ RAW files converted to JPEG for all tiers
+- ✅ Documentation updated
+
 **Next:** Priority 3.9 (Sidecar JSON) - Optional, can defer for MVP
 
 ---
