@@ -80,23 +80,27 @@ app.http('get-photos', {
           // Extract filename from blob name (flat structure now)
           const filename = blob.name;
 
+          // Convert filename to .jpg for thumbnail and preview (they're always JPEG, even for RAW)
+          const thumbnailFilename = filename.replace(/\.[^.]+$/, '.jpg');
+          const previewFilename = filename.replace(/\.[^.]+$/, '.jpg');
+
           // Generate SAS URLs for thumbnail, preview, and photo (1 hour expiration)
           const thumbnailUrl = await generateReadSasUrl(
             connectionString,
             "thumbnails",
-            filename, // Flat structure - thumbnails/{name}_{hash}.jpg
+            thumbnailFilename, // Always .jpg extension
             60 // 1 hour
           );
           const previewUrl = await generateReadSasUrl(
             connectionString,
             "previews",
-            filename, // Flat structure - previews/{name}_{hash}.jpg
+            previewFilename, // Always .jpg extension
             60 // 1 hour
           );
           const photoUrl = await generateReadSasUrl(
             connectionString,
             "photos",
-            blob.name, // Flat structure - photos/{name}_{hash}.jpg
+            blob.name, // Keep original extension (CR3, JPG, etc.)
             60
           );
 
