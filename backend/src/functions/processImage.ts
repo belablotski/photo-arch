@@ -145,10 +145,12 @@ app.storageBlob('process-image', {
       const uploadedMetadata = blobProperties.metadata || {};
       context.log(`Uploaded metadata: ${JSON.stringify(uploadedMetadata)}`);
       
-      // Parse custom tags from comma-separated string
-      const customTagsFromUpload = uploadedMetadata.customTags 
-        ? uploadedMetadata.customTags.split(',').map((t: string) => t.trim()).filter(Boolean)
-        : [];
+      // Read custom tags from separate fields (matches blob index tag structure)
+      const customTagsFromUpload = [
+        uploadedMetadata.customTag1,
+        uploadedMetadata.customTag2,
+        uploadedMetadata.customTag3
+      ].filter(Boolean); // Remove undefined/empty values
 
       // Check if photo already exists (deduplication)
       const photoBlobClient = photosContainerClient.getBlockBlobClient(permanentBlobName);
