@@ -63,11 +63,11 @@ echo "☁️  Step 3: Uploading to Azure Blob Storage with custom tags..."
 curl -X PUT "$UPLOAD_URL" \
   -H "x-ms-blob-type: BlockBlob" \
   -H "Content-Type: image/jpeg" \
-  -H "x-ms-meta-author: test-user" \
-  -H "x-ms-meta-location: San Francisco" \
-  -H "x-ms-meta-customTag1: vacation" \
-  -H "x-ms-meta-customTag2: beach" \
-  -H "x-ms-meta-customTag3: sunset" \
+  -H "x-ms-meta-author: Aliaksei Belablotski" \
+  -H "x-ms-meta-location: San Francisco CA" \
+  -H "x-ms-meta-customTag1: Family Vacation" \
+  -H "x-ms-meta-customTag2: Beach Day" \
+  -H "x-ms-meta-customTag3: Golden Gate" \
   --data-binary "@$PHOTO_FILE" \
   -w "\nHTTP Status: %{http_code}\n"
 
@@ -77,9 +77,10 @@ echo ""
 echo "Expected behavior:"
 echo "  1. File uploaded to landing-zone with custom tags in metadata"
 echo "  2. Process-image function triggers automatically"
-echo "  3. Custom tags extracted from metadata: vacation, beach, sunset"
-echo "  4. Blob index tags set on photos/thumbnails/previews containers"
-echo "  5. Custom tags should be queryable via blob index"
+echo "  3. Custom tags extracted with preserved case: Family Vacation, Beach Day, Golden Gate"
+echo "  4. Author and location also preserve original case"
+echo "  5. Blob index tags set on photos/thumbnails/previews containers"
+echo "  6. Custom tags should be queryable via blob index"
 echo ""
 echo "⏳ Waiting 5 seconds for processing to complete..."
 sleep 5
@@ -100,9 +101,11 @@ HAS_SUNSET=$(echo "$GET_RESPONSE" | jq -r '.photos[].customTag3' | grep -c "suns
 
 if [ "$HAS_VACATION" -gt 0 ] && [ "$HAS_BEACH" -gt 0 ] && [ "$HAS_SUNSET" -gt 0 ]; then
   echo "✅ SUCCESS: Custom tags persisted correctly!"
-  echo "   - customTag1: vacation ✓"
-  echo "   - customTag2: beach ✓"
-  echo "   - customTag3: sunset ✓"
+  echo "   - Author: Aliaksei Belablotski (case preserved) ✓"
+  echo "   - Location: San Francisco CA (case preserved) ✓"
+  echo "   - customTag1: Family Vacation ✓"
+  echo "   - customTag2: Beach Day ✓"
+  echo "   - customTag3: Golden Gate ✓"
 else
   echo "❌ FAILED: Custom tags not found in blob index tags"
   echo "   - customTag1 (vacation): $([ "$HAS_VACATION" -gt 0 ] && echo "✓" || echo "✗")"

@@ -590,14 +590,15 @@ function formatLocation(latitude?: number, longitude?: number): string {
 /**
  * Format user-provided text for blob tag (only allowed characters, max 256 chars)
  * Azure Blob Index Tags allow: a-z A-Z 0-9 space + - . : = _ /
- * Used for location and custom tags from frontend
+ * Used for author, location and custom tags from frontend
+ * Preserves original case to maintain user's formatting
  */
 function formatUserText(text?: string): string {
   if (!text) return '';
   
   // Remove invalid characters, keep only: a-z A-Z 0-9 space + - . : = _ /
-  // Convert to lowercase for consistency
-  return text.trim().replace(/[^a-zA-Z0-9\s+\-.:=_/]/g, '').toLowerCase().substring(0, 256);
+  // Preserve original case for user-provided content
+  return text.trim().replace(/[^a-zA-Z0-9\s+\-.:=_/]/g, '').substring(0, 256);
 }
 
 /**
