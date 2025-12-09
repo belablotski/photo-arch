@@ -191,13 +191,16 @@ app.storageBlob('process-image', {
       const actualWidth = (isRawFile && exifData?.imageWidth) ? exifData.imageWidth : imageMetadata.width;
       const actualHeight = (isRawFile && exifData?.imageHeight) ? exifData.imageHeight : imageMetadata.height;
       
+      // Extract original format from filename extension (preserves RAW formats like CR3, NEF, etc.)
+      const originalFormat = extension ? extension.substring(1).toLowerCase() : imageMetadata.format;
+      
       await photoBlobClient.uploadData(blobBuffer, {
         metadata: {
           originalFilename: originalFilename,  // Store original camera filename
           uploadDate: new Date().toISOString(),
           width: actualWidth.toString(),
           height: actualHeight.toString(),
-          format: imageMetadata.format,
+          format: originalFormat,  // Use original file extension, not processed format
           // Add EXIF metadata
           ...(exifData?.iso && { iso: exifData.iso.toString() }),
           ...(exifData?.fNumber && { aperture: `f/${exifData.fNumber}` }),
@@ -520,7 +523,8 @@ async function extractExifData(imageBuffer: Buffer, filename: string): Promise<E
 }
 
 /**
- * Format camera name for blob tag (spaces to dashes, max 256 chars)
+ * Format camera name for blob tag (only allowed characters, max 256 chars)
+ * Azure Blob Index Tags allow: a-z A-Z 0-9 space + - . : = _ /
  */
 function formatCameraName(make?: string, model?: string): string {
   if (!make && !model) return '';
@@ -534,18 +538,19 @@ function formatCameraName(make?: string, model?: string): string {
     camera = (make || model || '').trim();
   }
   
-  // Convert spaces to dashes and limit length
-  return camera.replace(/\s+/g, '-').substring(0, 256);
+  // Remove invalid characters, keep only: a-z A-Z 0-9 space + - . : = _ /
+  return camera.replace(/[^a-zA-Z0-9\s+\-.:=_/]/g, '').substring(0, 256);
 }
 
 /**
- * Format lens name for blob tag (spaces to dashes, max 256 chars)
+ * Format lens name for blob tag (only allowed characters, max 256 chars)
+ * Azure Blob Index Tags allow: a-z A-Z 0-9 space + - . : = _ /
  */
 function formatLensName(lensModel?: string): string {
   if (!lensModel) return '';
   
-  // Convert spaces to dashes and limit length
-  return lensModel.replace(/\s+/g, '-').substring(0, 256);
+  // Remove invalid characters, keep only: a-z A-Z 0-9 space + - . : = _ /
+  return lensModel.replace(/[^a-zA-Z0-9\s+\-.:=_/]/g, '').substring(0, 256);
 }
 
 /**
@@ -578,14 +583,16 @@ function formatLocation(latitude?: number, longitude?: number): string {
 }
 
 /**
- * Format user-provided text for blob tag (spaces to dashes, lowercase, max 256 chars)
+ * Format user-provided text for blob tag (only allowed characters, max 256 chars)
+ * Azure Blob Index Tags allow: a-z A-Z 0-9 space + - . : = _ /
  * Used for location and custom tags from frontend
  */
 function formatUserText(text?: string): string {
   if (!text) return '';
   
-  // Convert spaces to dashes, lowercase, and limit length
-  return text.trim().replace(/\s+/g, '-').toLowerCase().substring(0, 256);
+  // Remove invalid characters, keep only: a-z A-Z 0-9 space + - . : = _ /
+  // Convert to lowercase for consistency
+  return text.trim().replace(/[^a-zA-Z0-9\s+\-.:=_/]/g, '').toLowerCase().substring(0, 256);
 }
 
 /**

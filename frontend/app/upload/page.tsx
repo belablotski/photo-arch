@@ -33,6 +33,83 @@ export default function UploadPage() {
   });
   const [newTagInput, setNewTagInput] = useState("");
 
+  /**
+   * Validate text for Azure Blob Index Tags
+   * Only allows: a-z A-Z 0-9 space + - . : = _ /
+   * Max 256 characters
+   * Returns an object with validation result and details
+   */
+  const validateTagText = (text: string, fieldName: string): { valid: boolean; message?: string; invalidChars?: string[] } => {
+    if (!text || text.trim() === '') return { valid: true };
+    
+    const trimmed = text.trim();
+    
+    // Check length
+    if (trimmed.length > 256) {
+      return {
+        valid: false,
+        message: `${fieldName} is too long (${trimmed.length} characters). Maximum is 256 characters.`
+      };
+    }
+    
+    // Find invalid characters
+    const invalidCharsMatch = trimmed.match(/[^a-zA-Z0-9\s+\-.:=_/]/g);
+    if (invalidCharsMatch) {
+      const uniqueInvalidChars = [...new Set(invalidCharsMatch)];
+      return {
+        valid: false,
+        message: `${fieldName} contains invalid characters that are not allowed in blob tags.`,
+        invalidChars: uniqueInvalidChars
+      };
+    }
+    
+    return { valid: true };
+  };
+
+  /**
+   * Validate all metadata fields before upload
+   */
+  const validateMetadata = (metadata: PhotoMetadata): { valid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    if (metadata.author) {
+      const result = validateTagText(metadata.author, 'Author');
+      if (!result.valid) {
+        errors.push(result.message || 'Author field is invalid');
+        if (result.invalidChars) {
+          errors.push(`  Invalid characters: ${result.invalidChars.join(', ')}`);
+        }
+      }
+    }
+    
+    if (metadata.location) {
+      const result = validateTagText(metadata.location, 'Location');
+      if (!result.valid) {
+        errors.push(result.message || 'Location field is invalid');
+        if (result.invalidChars) {
+          errors.push(`  Invalid characters: ${result.invalidChars.join(', ')}`);
+        }
+      }
+    }
+    
+    if (metadata.customTags) {
+      metadata.customTags.forEach((tag, index) => {
+        const result = validateTagText(tag, `Custom Tag ${index + 1}`);
+        if (!result.valid) {
+          errors.push(result.message || `Custom Tag ${index + 1} is invalid`);
+          if (result.invalidChars) {
+            errors.push(`  Invalid characters: ${result.invalidChars.join(', ')}`);
+          }
+        }
+      });
+    }
+    
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  };
+
   const handleFileSelect = (selectedFiles: FileList | null) => {
     if (!selectedFiles) return;
 
@@ -73,6 +150,14 @@ export default function UploadPage() {
     // Apply current global metadata to this file before uploading
     const metadataToUpload = { ...globalMetadata };
     
+    // Validate metadata before upload
+    const validation = validateMetadata(metadataToUpload);
+    if (!validation.valid) {
+      const errorMessage = `Invalid metadata:\n\n${validation.errors.join('\n')}\n\nAllowed characters: a-z A-Z 0-9 space + - . : = _ /\n\nPlease fix the metadata fields and try again.`;
+      alert(errorMessage);
+      return;
+    }
+    
     try {
       // Update status to uploading with abort controller and current metadata
       setFiles((prev) =>
@@ -108,21 +193,21 @@ export default function UploadPage() {
       // Prepare blob metadata from current global metadata (only non-empty values)
       const blobMetadata: Record<string, string> = {};
       if (metadataToUpload.author) {
-        blobMetadata.author = metadataToUpload.author;
+        blobMetadata.author = metadataToUpload.author.trim();
       }
       if (metadataToUpload.location) {
-        blobMetadata.location = metadataToUpload.location;
+        blobMetadata.location = metadataToUpload.location.trim();
       }
       // Store custom tags as separate fields (matches blob index tag structure)
       if (metadataToUpload.customTags && metadataToUpload.customTags.length > 0) {
         if (metadataToUpload.customTags[0]) {
-          blobMetadata.customTag1 = metadataToUpload.customTags[0];
+          blobMetadata.customTag1 = metadataToUpload.customTags[0].trim();
         }
         if (metadataToUpload.customTags[1]) {
-          blobMetadata.customTag2 = metadataToUpload.customTags[1];
+          blobMetadata.customTag2 = metadataToUpload.customTags[1].trim();
         }
         if (metadataToUpload.customTags[2]) {
-          blobMetadata.customTag3 = metadataToUpload.customTags[2];
+          blobMetadata.customTag3 = metadataToUpload.customTags[2].trim();
         }
       }
       
@@ -173,6 +258,14 @@ export default function UploadPage() {
   };
 
   const uploadAll = async () => {
+    // Validate metadata before starting batch upload
+    const validation = validateMetadata(globalMetadata);
+    if (!validation.valid) {
+      const errorMessage = `Invalid metadata:\n\n${validation.errors.join('\n')}\n\nAllowed characters: a-z A-Z 0-9 space + - . : = _ /\n\nPlease fix the metadata fields and try again.`;
+      alert(errorMessage);
+      return;
+    }
+    
     setIsUploadingAll(true);
     shouldCancelAllRef.current = false;
     
@@ -316,8 +409,11 @@ export default function UploadPage() {
           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">
             Photo Metadata (Optional)
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
             This metadata will be automatically applied when you upload photos. Especially useful for fields missing in EXIF data.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mb-4 bg-gray-50 dark:bg-gray-900 p-2 rounded">
+            ℹ️ Allowed characters: a-z A-Z 0-9 space + - . : = _ /
           </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
