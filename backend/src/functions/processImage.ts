@@ -38,15 +38,15 @@ interface ExifData {
 interface BlobTags {
   author: string;
   dateTaken: string;
-  camera: string;
-  lens: string;
-  location: string;
   rating: string;
-  customTag1: string;
-  customTag2: string;
-  customTag3: string;
   favorite: string;
-  [key: string]: string; // Index signature for Azure SDK compatibility
+  camera?: string;
+  lens?: string;
+  location?: string;
+  customTag1?: string;
+  customTag2?: string;
+  customTag3?: string;
+  [key: string]: string | undefined; // Index signature for Azure SDK compatibility
 }
 
 /**
@@ -161,10 +161,11 @@ app.storageBlob('process-image', {
       context.log(`Uploaded metadata: ${JSON.stringify(uploadedMetadata)}`);
       
       // Read custom tags from separate fields (matches blob index tag structure)
+      // Note: Azure Storage metadata keys are case-insensitive and normalized to lowercase
       const customTagsFromUpload = [
-        uploadedMetadata.customTag1,
-        uploadedMetadata.customTag2,
-        uploadedMetadata.customTag3
+        uploadedMetadata.customtag1 || uploadedMetadata.customTag1,
+        uploadedMetadata.customtag2 || uploadedMetadata.customTag2,
+        uploadedMetadata.customtag3 || uploadedMetadata.customTag3
       ].filter(Boolean); // Remove undefined/empty values
 
       // Check if photo already exists (deduplication)
@@ -212,14 +213,18 @@ app.storageBlob('process-image', {
       });
 
       // Create blob tags from EXIF data and uploaded metadata
-      const blobTags: Record<string, string> = createBlobTags(
+      const blobTags: BlobTags = createBlobTags(
         exifData, 
         uploadedMetadata.author || "default-user", // Use uploaded author or default
         uploadedMetadata.location, // Use uploaded location
         customTagsFromUpload // Use uploaded custom tags
       );
       context.log(`Setting blob tags: ${JSON.stringify(blobTags)}`);
-      await photoBlobClient.setTags(blobTags);
+      // Filter out undefined values before passing to Azure SDK
+      const tagsForAzure: Record<string, string> = Object.fromEntries(
+        Object.entries(blobTags).filter(([_, v]) => v !== undefined) as [string, string][]
+      );
+      await photoBlobClient.setTags(tagsForAzure);
 
       // Upload thumbnail to thumbnails container with .jpg extension (thumbnails are always JPEG)
       const thumbnailBlobName = `${nameWithoutExt}_${hashPrefix}.jpg`;
@@ -250,8 +255,8 @@ app.storageBlob('process-image', {
       });
 
       // Apply same blob tags to thumbnail for UI filtering
-      context.log(`Setting blob tags on thumbnail: ${JSON.stringify(blobTags)}`);
-      await thumbnailBlobClient.setTags(blobTags);
+      context.log(`Setting blob tags on thumbnail: ${JSON.stringify(tagsForAzure)}`);
+      await thumbnailBlobClient.setTags(tagsForAzure);
 
       // Upload preview (Full HD) to previews container with .jpg extension
       const previewBlobName = `${nameWithoutExt}_${hashPrefix}.jpg`;
@@ -282,8 +287,8 @@ app.storageBlob('process-image', {
       });
 
       // Apply same blob tags to preview for UI filtering
-      context.log(`Setting blob tags on preview: ${JSON.stringify(blobTags)}`);
-      await previewBlobClient.setTags(blobTags);
+      context.log(`Setting blob tags on preview: ${JSON.stringify(tagsForAzure)}`);
+      await previewBlobClient.setTags(tagsForAzure);
 
       // Delete from landing-zone after successful processing
       context.log(`Deleting from ${landingContainer}/${blobName}...`);
@@ -598,6 +603,7 @@ function formatUserText(text?: string): string {
 /**
  * Create blob tags from EXIF data and uploaded metadata
  * Priority: Uploaded metadata > EXIF data > defaults
+ * Note: Only includes tags with actual values (Azure Blob Index Tags reject empty strings)
  */
 function createBlobTags(
   exif: ExifData | null, 
@@ -610,16 +616,31 @@ function createBlobTags(
     ? formatUserText(uploadedLocation) 
     : formatLocation(exif?.latitude, exif?.longitude);
   
-  return {
+  // Build tags object, only including non-empty values
+  const tags: BlobTags = {
     author: formatUserText(author) || 'default-user',
     dateTaken: formatDateTaken(exif?.dateTimeOriginal),
-    camera: formatCameraName(exif?.make, exif?.model),
-    lens: formatLensName(exif?.lensModel),
-    location: location,
     rating: '0',
-    customTag1: formatUserText(customTags[0]),
-    customTag2: formatUserText(customTags[1]),
-    customTag3: formatUserText(customTags[2]),
     favorite: 'false'
   };
+  
+  // Only add optional tags if they have values
+  const camera = formatCameraName(exif?.make, exif?.model);
+  if (camera) tags.camera = camera;
+  
+  const lens = formatLensName(exif?.lensModel);
+  if (lens) tags.lens = lens;
+  
+  if (location) tags.location = location;
+  
+  const customTag1 = formatUserText(customTags[0]);
+  if (customTag1) tags.customTag1 = customTag1;
+  
+  const customTag2 = formatUserText(customTags[1]);
+  if (customTag2) tags.customTag2 = customTag2;
+  
+  const customTag3 = formatUserText(customTags[2]);
+  if (customTag3) tags.customTag3 = customTag3;
+  
+  return tags;
 }
