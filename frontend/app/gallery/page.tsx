@@ -114,6 +114,17 @@ export default function GalleryPage() {
     };
   }, [hasMore, loadingMore, continuationToken, fetchPhotos]);
 
+  // Auto-load more photos when approaching the end in lightbox
+  useEffect(() => {
+    if (selectedPhotoIndex === null) return;
+    
+    // If viewing last 3 photos and more photos are available, load them
+    const isNearEnd = selectedPhotoIndex >= photos.length - 3;
+    if (isNearEnd && hasMore && !loadingMore && continuationToken) {
+      fetchPhotos(continuationToken);
+    }
+  }, [selectedPhotoIndex, photos.length, hasMore, loadingMore, continuationToken, fetchPhotos]);
+
   // Keyboard navigation for lightbox
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -345,15 +356,22 @@ export default function GalleryPage() {
           )}
 
           {/* Next button */}
-          {selectedPhotoIndex !== null && selectedPhotoIndex < photos.length - 1 && (
+          {selectedPhotoIndex !== null && (selectedPhotoIndex < photos.length - 1 || (hasMore && !loadingMore)) && (
             <button
-              className="absolute right-4 text-white hover:text-gray-300 text-5xl w-12 h-12 flex items-center justify-center"
+              className="absolute right-4 text-white hover:text-gray-300 text-5xl w-12 h-12 flex items-center justify-center disabled:opacity-50"
               onClick={(e) => {
                 e.stopPropagation();
-                setSelectedPhotoIndex(prev => prev !== null ? prev + 1 : prev);
+                if (selectedPhotoIndex < photos.length - 1) {
+                  setSelectedPhotoIndex(prev => prev !== null ? prev + 1 : prev);
+                }
               }}
+              disabled={selectedPhotoIndex >= photos.length - 1}
             >
-              ›
+              {selectedPhotoIndex >= photos.length - 1 && loadingMore ? (
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
+              ) : (
+                '›'
+              )}
             </button>
           )}
 
