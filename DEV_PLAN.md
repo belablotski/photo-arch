@@ -43,6 +43,34 @@ This document outlines the development roadmap for the Photo Archive application
 - Automatic duplicate detection and skipping
 - Original filename preserved in metadata
 
+✅ **Phase 2: Backend Core - Priority 3.8** (COMPLETED)
+- EXIF metadata extraction with exifr and exiftool-vendored
+- RAW file support (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
+- Automatic metadata storage in blob metadata and index tags
+
+✅ **Phase 2: Backend Core - Priority 3.85** (COMPLETED)
+- Three-tier image storage architecture
+- Thumbnails (600px), Previews (1920px Full HD), Originals
+- JPEG conversion for RAW file thumbnails/previews
+- Optimal balance of quality and performance
+
+✅ **Phase 3: Frontend - Priority 4** (COMPLETED)
+- Upload UI with drag-and-drop file selection
+- Metadata tagging (author, location, 3 custom tags)
+- Direct-to-Azure upload with progress tracking
+- Blob metadata storage for backend processing
+- Validation with user-friendly error messages
+
+✅ **Phase 3: Frontend - Priority 5** (COMPLETED - Dec 8-10, 2025)
+- Gallery page with responsive grid (4/3/2/1 columns)
+- Three-tier storage (thumbnails, previews, originals)
+- Full-screen lightbox with metadata panel
+- Infinite scroll in grid and lightbox
+- Keyboard navigation (←→ ESC)
+- Custom tags fixed (case-sensitivity, empty tag handling)
+- Case-preserving tag formatting
+- Auto-load more photos when approaching end
+
 ✅ **Azure Functions v4 Migration** (COMPLETED - Nov 10, 2025)
 - Migrated from hybrid v3/v4 to pure v4 programming model
 - All functions use `app.http()` and `app.storageBlob()` registration
@@ -375,7 +403,230 @@ frontend/
 - ✅ Metadata tags appear in landing-zone blobs
 - ✅ Backend creates searchable blob index tags from metadata
 
-**Next:** Priority 5 (Frontend Gallery) ← **YOU ARE HERE**
+**Next:** Priority 5 (Frontend Gallery) ✅ COMPLETED
+
+---
+
+### 🔥 **PRIORITY 5: Frontend Gallery** ✅ COMPLETED
+
+**Status:** ✅ Implemented and tested (December 8-10, 2025)
+
+**Implementation:**
+```
+frontend/
+├── app/
+│   ├── gallery/
+│   │   └── page.tsx       # Gallery with grid + lightbox ✅
+│   ├── upload/
+│   │   └── page.tsx       # Upload interface ✅
+│   └── page.tsx           # Homepage ✅
+└── package.json           # Dependencies ✅
+```
+
+**Completed Features:**
+
+**1. Three-Tier Image Storage** ✅
+- **Thumbnails** (600px width, JPEG) - For gallery grid
+- **Previews** (1920px Full HD, JPEG) - For lightbox/slideshow
+- **Originals** (full resolution) - For download
+- All three generated and stored in separate containers
+- Automatic JPEG conversion for RAW thumbnails/previews
+
+**2. Responsive Gallery Grid** ✅
+- Desktop: 4 columns
+- Tablet: 3 columns
+- Small tablet: 2 columns
+- Mobile: 1 column
+- Uses 600px thumbnails (sharp, not blurry)
+- Displays filename under each photo
+
+**3. Infinite Scroll** ✅
+- Intersection Observer API
+- Loads 20 photos per batch
+- Automatic loading when scrolling near bottom
+- Loading spinner while fetching
+- Works seamlessly in both grid and lightbox
+
+**4. Full-Screen Lightbox/Slideshow** ✅
+- Click any photo to open full-screen view
+- Shows 1920px preview (Full HD quality)
+- **Navigation:**
+  - Keyboard: ← → arrows, ESC to close
+  - Click: Previous/Next buttons
+  - Auto-load more photos when near end
+- **Metadata Panel:**
+  - Original filename
+  - Upload date (formatted)
+  - Camera and lens
+  - Author
+  - Location
+  - Dimensions (width × height)
+  - File format (jpg, cr3, nef, etc.)
+  - File size (MB/KB)
+  - Custom tags (if present)
+- Close button (×) top-right
+
+**5. Infinite Scroll in Lightbox** ✅ (Dec 10, 2025)
+- Auto-loads next batch when within 3 photos of end
+- Next button shows spinner when loading
+- Seamless navigation through entire collection
+- No limit to number of photos in slideshow
+
+**6. Custom Tags Fix** ✅ (Dec 9, 2025)
+- Fixed Azure Storage metadata key case-sensitivity issue
+- Custom tags now persist correctly to blob index tags
+- Empty tags omitted (cleaner approach)
+- Made BlobTags interface fields optional
+- Case-preserving tag formatting (no lowercase conversion)
+
+**7. Tag Formatting** ✅ (Dec 9, 2025)
+- **User text** (author, location, custom tags):
+  - Preserves original case ("Aliaksei Belablotski")
+  - Preserves spaces ("San Francisco CA")
+  - Removes invalid characters only
+  - Max 256 characters
+- **Camera/Lens names**:
+  - Preserves original case ("Canon EOS 5D Mark IV")
+  - Removes redundant manufacturer in model
+  - Preserves spaces and technical formatting
+- **Allowed characters**: `a-z A-Z 0-9 space + - . : = _ /`
+
+**Technical Implementation:**
+```typescript
+// Gallery page structure
+- State management for photos, pagination, lightbox
+- Intersection Observer for infinite scroll
+- Keyboard event handlers for navigation
+- API integration with continuation tokens
+- Responsive grid with Tailwind CSS
+- Full-screen overlay with backdrop blur
+
+// Image URLs
+- thumbnailUrl: 600px JPEG for grid
+- previewUrl: 1920px JPEG for lightbox
+- photoUrl: Original file for download
+```
+
+**Test Results:**
+- ✅ Gallery loads and displays photos correctly
+- ✅ Infinite scroll works in grid view
+- ✅ Infinite scroll works in lightbox (auto-loads more)
+- ✅ Lightbox opens with correct photo
+- ✅ Keyboard navigation works (←→ ESC)
+- ✅ Metadata displays correctly for all file types
+- ✅ Custom tags persist and display
+- ✅ Case-preserving formatting works
+- ✅ RAW files show correct format (CR3, NEF, etc.)
+- ✅ Preview quality excellent at 1920px
+- ✅ Thumbnails sharp at 600px (not blurry)
+
+**Acceptance Criteria:**
+- ✅ Photos displayed in responsive grid
+- ✅ Click photo opens full-screen lightbox
+- ✅ Navigate between photos with keyboard/buttons
+- ✅ Metadata panel shows all photo information
+- ✅ Infinite scroll loads more photos automatically
+- ✅ Works with JPEG and RAW files
+- ✅ Fast loading with three-tier storage
+- ✅ Custom tags appear correctly
+
+**Next:** Priority 6 (Filtering & Search UI) ← **YOU ARE HERE**
+
+---
+
+### 🔥 **PRIORITY 6: Filtering & Search UI** (IN PROGRESS)
+
+**Status:** ⏳ Not yet started
+
+**Why Important:**
+- With many photos, users need to find specific shots quickly
+- Backend already supports filtering via query params
+- Essential for professional workflows
+- Makes the gallery actually useful at scale
+
+**Proposed Features:**
+
+**1. Filter Panel Component**
+```tsx
+// Location: frontend/app/gallery/FilterPanel.tsx
+- Collapsible panel at top of gallery
+- Form with filter inputs
+- Apply/Clear buttons
+- Show active filter count badge
+```
+
+**2. Filter Options:**
+- **Author** - Text input or dropdown (if limited users)
+- **Date Range** - Date picker (from/to)
+  - Quick filters: Today, Last Week, Last Month, Last Year
+- **Camera** - Dropdown populated from photos
+- **Lens** - Dropdown populated from photos  
+- **Location** - Text input with autocomplete
+- **Custom Tags** - Multi-select with chips
+- **Rating** - Star selector (when rating implemented)
+- **Favorites** - Toggle checkbox
+
+**3. URL State Management:**
+```typescript
+// Shareable filtered views via URL params
+/gallery?author=john&camera=Canon&dateTaken>=2025-11-01
+
+// Easy to share filtered albums
+// Browser back/forward works correctly
+// Bookmark specific views
+```
+
+**4. Backend Integration:**
+```typescript
+// Existing API already supports filters:
+GET /api/photos?author=john&dateTaken>=2025-11-01&camera=Canon
+
+// Just need to build query string from form state
+const buildQueryString = (filters: FilterState) => {
+  const params = new URLSearchParams();
+  if (filters.author) params.set('author', filters.author);
+  if (filters.dateFrom) params.set('dateTaken>=', filters.dateFrom);
+  // ... etc
+  return params.toString();
+};
+```
+
+**5. UI/UX Details:**
+- Accordion sections for each filter type
+- Clear individual filter chips
+- "Reset All" button
+- Show result count: "Showing 45 photos"
+- Persist filter state in URL
+- Loading indicator when filtering
+- Empty state: "No photos match your filters"
+
+**Implementation Plan:**
+1. Create `FilterPanel.tsx` component
+2. Add filter state management with URL sync
+3. Build query string builder
+4. Integrate with existing `fetchPhotos()` function
+5. Add filter chips display (active filters)
+6. Style with Tailwind CSS
+7. Add keyboard shortcuts (Cmd+F to focus)
+8. Test with various filter combinations
+
+**Acceptance Criteria:**
+- [ ] Can filter by author
+- [ ] Can filter by date range
+- [ ] Can filter by camera
+- [ ] Can filter by lens
+- [ ] Can filter by location
+- [ ] Can filter by custom tags
+- [ ] Filters combine correctly (AND logic)
+- [ ] URL updates with filter params
+- [ ] Can share filtered URLs
+- [ ] Clear button resets all filters
+- [ ] Loading states work correctly
+- [ ] Empty state displays appropriately
+
+**Estimated Time:** 4-6 hours
+
+**Next:** Priority 7 (Rating System)
 
 ---
 
@@ -1123,34 +1374,40 @@ MVP COMPLETE ✨
 8. ✅ Frontend upload UI with metadata tagging
 9. ✅ RAW file support (CR3, CR2, NEF, ARW, RAF, ORF, RW2, DNG, PEF)
 10. ✅ Content-hash naming with deduplication
+11. ✅ Three-tier image storage (thumbnails 600px, previews 1920px, originals)
+12. ✅ Frontend gallery page with responsive grid
+13. ✅ Full-screen lightbox with metadata panel
+14. ✅ Infinite scroll in gallery and lightbox
+15. ✅ Custom tags persistence (fixed case-sensitivity)
+16. ✅ Case-preserving tag formatting
 
 **Immediate (Current Focus):**
-1. **Frontend Gallery Page** ← **YOU ARE HERE**
-   - Create `frontend/app/gallery/page.tsx`
-   - Fetch photos from `GET /api/photos` endpoint
-   - Display thumbnails in responsive grid
-   - Show photo metadata (camera, lens, date, settings)
-   - Handle pagination or infinite scroll
-   - Request SAS URLs for thumbnail access
-   - Click to view full-size (prepare for lightbox modal)
+1. **Filtering & Search UI** ← **YOU ARE HERE**
+   - Add filter panel to gallery page
+   - Filter by: author, date range, camera, lens, location, custom tags
+   - Apply/clear buttons
+   - URL params for shareable filtered views
+   - Backend already supports filtering via query params
    
-2. **Photo Lightbox/Modal**
-   - Click thumbnail to view full-size photo
-   - Display full EXIF metadata
-   - Navigation between photos (prev/next)
-   - Close button and ESC key support
+2. **Rating System**
+   - Add star rating (0-5) in lightbox
+   - Update blob tags when rating changes
+   - Filter by rating in gallery
 
 **Short Term (Next 1-2 Weeks):**
-1. Add filtering UI (by camera, date range, lens, custom tags)
-2. Test gallery with real uploaded photos
-3. Add loading states and error handling
-4. Deploy backend to Azure (optional)
+1. Add favorites toggle (heart icon)
+2. Quick filter to show only favorites
+3. Bulk operations (select multiple, update tags)
+4. Photo deletion (with confirmation)
+5. Sorting options (date, name, size)
 
 **Medium Term (Next 2-3 Weeks):**
-1. Deploy frontend to Azure Static Web Apps or App Service
-2. Add authentication (Azure AD B2C)
-3. User-specific photo access
-4. End-to-end testing in production
+1. Deploy backend to Azure Functions
+2. Deploy frontend to Azure Static Web Apps
+3. Add authentication (Azure AD B2C)
+4. User-specific photo access
+5. Performance testing with 100+ photos
+6. Mobile optimization (swipe gestures in lightbox)
 
 ---
 
@@ -1176,7 +1433,7 @@ MVP COMPLETE ✨
 
 ---
 
-**Last Updated:** December 2, 2025  
-**Status:** Frontend Upload Complete ✅  
-**Next Milestone:** Frontend Gallery (Priority 5)  
-**Git Status:** Ready to commit frontend metadata tagging feature
+**Last Updated:** December 10, 2025  
+**Status:** Frontend Gallery Complete ✅ | Custom Tags Fixed ✅ | Infinite Scroll in Lightbox ✅  
+**Next Milestone:** Filtering & Search UI (Priority 6)  
+**Git Status:** Ready to commit gallery completion and tag formatting fixes
